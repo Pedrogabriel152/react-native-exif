@@ -8,26 +8,25 @@ import com.facebook.react.module.model.ReactModuleInfoProvider
 import java.util.HashMap
 
 class ReactNativeExifPackage : BaseReactPackage() {
-  override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? {
-    return if (name == ReactNativeExifModule.NAME) {
-      ReactNativeExifModule(reactContext)
-    } else {
-      null
+    override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? {
+        return if (name == ReactNativeExifModule.NAME) {
+            ReactNativeExifModule(reactContext)
+        } else {
+            null
+        }
     }
-  }
 
-  override fun getReactModuleInfoProvider(): ReactModuleInfoProvider {
-    return ReactModuleInfoProvider {
-      val moduleInfos: MutableMap<String, ReactModuleInfo> = HashMap()
-      moduleInfos[ReactNativeExifModule.NAME] = ReactModuleInfo(
-        ReactNativeExifModule.NAME,
-        ReactNativeExifModule.NAME,
-        false,  // canOverrideExistingModule
-        false,  // needsEagerInit
-        false,  // isCxxModule
-        true // isTurboModule
-      )
-      moduleInfos
+    override fun getReactModuleInfoProvider(): ReactModuleInfoProvider {
+        return ReactModuleInfoProvider {
+            moduleInfos[ReactNativeExifModule.NAME] = ReactModuleInfo(
+                ReactNativeExifModule.NAME,
+                ReactNativeExifModule.NAME,
+                false,  // canOverrideExistingModule
+                false,  // needsEagerInit
+                false,  // isCxxModule
+                true // isTurboModule
+            )
+            moduleInfos
+        }
     }
-  }
 }
