@@ -149,7 +149,7 @@
     ]
   },
   "codegenConfig": {
-    "name": "ReactNativeExifSpec",
+    "name": "ReactNativeExif",
     "type": "modules",
     "jsSrcsDir": "src",
     "android": {

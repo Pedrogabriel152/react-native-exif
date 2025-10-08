@@ -1775,19 +1775,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@eslint/config-helpers@npm:^0.3.1":
-  version: 0.3.1
-  resolution: "@eslint/config-helpers@npm:0.3.1"
-  checksum: b95c239264078a430761afb344402d517134289a7d8b69a6ff1378ebe5eec9da6ad22b5e6d193b9e02899aeda30817ac47178d5927247092cc6d73a52f8d07c9
-  languageName: node
-  linkType: hard
-
-"@eslint/core@npm:^0.15.2":
-  version: 0.15.2
-  resolution: "@eslint/core@npm:0.15.2"
+"@eslint/config-helpers@npm:^0.4.0":
+  version: 0.4.0
+  resolution: "@eslint/config-helpers@npm:0.4.0"
   dependencies:
-    "@types/json-schema": ^7.0.15
-  checksum: 535fc4e657760851826ceae325a72dde664b99189bd975715de3526db655c66d7a35b72dbb1c7641ab9201ed4e2130f79c5be51f96c820b5407c3766dcf94f23
+    "@eslint/core": ^0.16.0
+  checksum: f17af9d6de60e0d8be5131451ef489f32984f92aff00cb1c5c8f1790baf07ea7ad803e0f21f1519eded4ce247871ffe593b7e51ddc094b5337d22f29dd720ba5
   languageName: node
   linkType: hard
 
@@ -1817,10 +1810,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@eslint/js@npm:9.36.0, @eslint/js@npm:^9.35.0":
-  version: 9.36.0
-  resolution: "@eslint/js@npm:9.36.0"
-  checksum: 17ff28272337357783b55e76417e61306e528dced99bb49d49e06298023b4071cb30f4aeb0bf30a337817d3eb3132784db6b8edd3a90118c5217833136712713
+"@eslint/js@npm:9.37.0, @eslint/js@npm:^9.35.0":
+  version: 9.37.0
+  resolution: "@eslint/js@npm:9.37.0"
+  checksum: 916f2ff7f70eadaa3a1c3f7d6d375fccfb676723484e1c54c5d63ff8a462746090097b73d21f4cb876ff2276d04af3f1c4c9e9a93729a9305213ca3aaa75008c
   languageName: node
   linkType: hard
 
@@ -1831,13 +1824,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@eslint/plugin-kit@npm:^0.3.5":
-  version: 0.3.5
-  resolution: "@eslint/plugin-kit@npm:0.3.5"
+"@eslint/plugin-kit@npm:^0.4.0":
+  version: 0.4.0
+  resolution: "@eslint/plugin-kit@npm:0.4.0"
   dependencies:
-    "@eslint/core": ^0.15.2
+    "@eslint/core": ^0.16.0
     levn: ^0.4.1
-  checksum: 1808d7e2538335b8e4536ef372840e93468ecc6f4a5bf72ad665795290b6a8a72f51ef4ffd8bcfc601b133a5d5f67b59ab256d945f8c825c5c307aad29efaf86
+  checksum: bb82be19c99eea256f7ec8e0996d28bd4b95b796bd1b27659b92e83278ef813485ada55995314887e7812cca02b0a9672d63f547c2a110eb5a7f0022c8e0f23d
   languageName: node
   linkType: hard
 
@@ -2704,6 +2697,8 @@ __metadata:
     react: 19.1.0
     react-native: 0.81.1
     react-native-builder-bob: ^0.40.13
+    react-native-image-crop-picker: ^0.51.0
+    react-native-image-picker: ^8.2.1
     react-native-monorepo-config: ^0.1.9
     react-native-safe-area-context: ^5.5.2
   languageName: unknown
@@ -3559,11 +3554,11 @@ __metadata:
   linkType: hard
 
 "@types/node@npm:*":
-  version: 24.6.2
-  resolution: "@types/node@npm:24.6.2"
+  version: 24.7.0
+  resolution: "@types/node@npm:24.7.0"
   dependencies:
-    undici-types: ~7.13.0
-  checksum: 95766998060f005403a1aea198c2c472fd1d695cb9e7cebb62adb0e3aceb871ae1201e90577df31a7c1d6a2c2fadccbd9a9868f9014cb77ebd3232104de8f4fb
+    undici-types: ~7.14.0
+  checksum: 154e6113dae3e551386d37d9e84e15bbf2a81ee14700ce42815f123ff35904363ab86a5650f98b555a892f1502b45a0aaa91666a979ec8860d95b09179d7100f
   languageName: node
   linkType: hard
 
@@ -3582,11 +3577,11 @@ __metadata:
   linkType: hard
 
 "@types/react@npm:^19.1.0":
-  version: 19.2.0
-  resolution: "@types/react@npm:19.2.0"
+  version: 19.2.2
+  resolution: "@types/react@npm:19.2.2"
   dependencies:
     csstype: ^3.0.2
-  checksum: 1bfef433bb4d237487835423eaf4789bad94bcf96d4106f5c53f3109dc8451edea6b04be3f6e9d374f1a76672bb66e58d68e64f45535f0b6c804930a731dd19e
+  checksum: 7eb2d316dd5a6c02acb416524b50bae932c38d055d26e0f561ca23c009c686d16a2b22fcbb941eecbe2ecb167f119e29b9d0142d9d056dd381352c43413b60da
   languageName: node
   linkType: hard
 
@@ -4360,11 +4355,11 @@ __metadata:
   linkType: hard
 
 "baseline-browser-mapping@npm:^2.8.9":
-  version: 2.8.11
-  resolution: "baseline-browser-mapping@npm:2.8.11"
+  version: 2.8.13
+  resolution: "baseline-browser-mapping@npm:2.8.13"
   bin:
     baseline-browser-mapping: dist/cli.js
-  checksum: 250913ed3eeda6b6836ce7519ac52009627f021e1f6ac5994bc5a488df85c46836c8f00f2e08d46bfc7ca70a195f971f90ac26e5f5438125fff7ea8385f2b1e0
+  checksum: 62c08d1b9c119c4796e82a65a7d3efd7d4b12abe4495b1112ff629dba0a7994da5359209f3f77618402f4f6f554d12b667252389fa6b5a08cbc8b9c3a137a009
   languageName: node
   linkType: hard
 
@@ -4597,9 +4592,9 @@ __metadata:
   linkType: hard
 
 "caniuse-lite@npm:^1.0.30001746":
-  version: 1.0.30001747
-  resolution: "caniuse-lite@npm:1.0.30001747"
-  checksum: 1c0192838c384af64badc25a1380ec2d4c705dc37e84955634bfbe818b62a2596be2db75e1e9227887b25e57d06569960da542d2a7bcf7d35da8becb1365369a
+  version: 1.0.30001749
+  resolution: "caniuse-lite@npm:1.0.30001749"
+  checksum: 0a2692a7d51e4f4cecd2e8714e1d3d9982479fb59fa2fc8d6a462844bb7f5243ffe0bc94b25a1ff944f63bb2372ff5f6d01ef422729ca3c262975f1b91d78c07
   languageName: node
   linkType: hard
 
@@ -4693,9 +4688,9 @@ __metadata:
   linkType: hard
 
 "ci-info@npm:^4.3.0":
-  version: 4.3.0
-  resolution: "ci-info@npm:4.3.0"
-  checksum: 77a851ec826e1fbcd993e0e3ef402e6a5e499c733c475af056b7808dea9c9ede53e560ed433020489a8efea2d824fd68ca203446c9988a0bac8475210b0d4491
+  version: 4.3.1
+  resolution: "ci-info@npm:4.3.1"
+  checksum: 66c159d92648e8a07acab0a3a0681bff6ccc39aa44916263208c4d97bbbeedbbc886d7611fd30c21df1aa624ce3c6fcdfde982e74689e3e014e064e1d0805f94
   languageName: node
   linkType: hard
 
@@ -5569,9 +5564,9 @@ __metadata:
   linkType: hard
 
 "electron-to-chromium@npm:^1.5.227":
-  version: 1.5.230
-  resolution: "electron-to-chromium@npm:1.5.230"
-  checksum: a3fdb59b95950e75f4426212645b7852d91100ec64af249ff9a163fa50fe15e9bb1714f0467dda020394f453a9ec0a2f63969d9b131962373f93f56d1b52a4f6
+  version: 1.5.233
+  resolution: "electron-to-chromium@npm:1.5.233"
+  checksum: 84c36a12b6099ef2584cee8e181f01e8efc4d1d81f1e5802c8beaae18d50ca03e9706267f6b93f3b95716ed084b5b628dfe340accf0d8b1670f714a90bccc4c0
   languageName: node
   linkType: hard
 
@@ -5636,11 +5631,11 @@ __metadata:
   linkType: hard
 
 "envinfo@npm:^7.13.0":
-  version: 7.15.0
-  resolution: "envinfo@npm:7.15.0"
+  version: 7.17.0
+  resolution: "envinfo@npm:7.17.0"
   bin:
     envinfo: dist/cli.js
-  checksum: 38595c11134ecb66a40289980d8ca82e89fdcd68849dd72560c1bbc3cfc55c867573b4150967707ff9ff2e5cad6f1d0cb6cc56c333a6eccdcd3533452141c0a8
+  checksum: d09e6d2d5dea999f9b5e1a8c496337b5e470f843c046843603e28132a7f391eef18589735c5bc8cc529a3cd8848bd1d4750fe8851f5de7b9d0d6b1d2f415adf9
   languageName: node
   linkType: hard
 
@@ -6062,17 +6057,17 @@ __metadata:
   linkType: hard
 
 "eslint@npm:^9.35.0":
-  version: 9.36.0
-  resolution: "eslint@npm:9.36.0"
+  version: 9.37.0
+  resolution: "eslint@npm:9.37.0"
   dependencies:
     "@eslint-community/eslint-utils": ^4.8.0
     "@eslint-community/regexpp": ^4.12.1
     "@eslint/config-array": ^0.21.0
-    "@eslint/config-helpers": ^0.3.1
-    "@eslint/core": ^0.15.2
+    "@eslint/config-helpers": ^0.4.0
+    "@eslint/core": ^0.16.0
     "@eslint/eslintrc": ^3.3.1
-    "@eslint/js": 9.36.0
-    "@eslint/plugin-kit": ^0.3.5
+    "@eslint/js": 9.37.0
+    "@eslint/plugin-kit": ^0.4.0
     "@humanfs/node": ^0.16.6
     "@humanwhocodes/module-importer": ^1.0.1
     "@humanwhocodes/retry": ^0.4.2
@@ -6107,7 +6102,7 @@ __metadata:
       optional: true
   bin:
     eslint: bin/eslint.js
-  checksum: 08a02a1d474cf7ea63ef9328e638751c939a1c08b99f7812f0f44a96e3b8346ab3bbca3af57da8b3e74cbc6619e41645fd3dcb3adda94d1cb826f02664e2d44c
+  checksum: 78e813174acef58d361d557a4d083d2d03f20cd70dd96f59973414305acaedf72bad52271c789174a19ee0407f8bece017ce42a05c89014b93e457d033285aeb
   languageName: node
   linkType: hard
 
@@ -9376,9 +9371,9 @@ __metadata:
   linkType: hard
 
 "node-releases@npm:^2.0.21":
-  version: 2.0.21
-  resolution: "node-releases@npm:2.0.21"
-  checksum: 191f8245e18272971650eb45151c5891313bca27507a8f634085bd8c98a9cb9492686ef6182176866ceebff049646ef6cd5fb5ca46d5b5ca00ce2c69185d84c4
+  version: 2.0.23
+  resolution: "node-releases@npm:2.0.23"
+  checksum: dc3194ffdf04975f8525a5e175c03f5a95cecd7607b6b0e80d28aaa03900706d920722b5f2ae2e8e28e029e6ae75f0d0f7eae87e8ee2a363c704785e3118f13d
   languageName: node
   linkType: hard
 
@@ -10263,6 +10258,26 @@ __metadata:
   languageName: node
   linkType: hard
 
+"react-native-image-crop-picker@npm:^0.51.0":
+  version: 0.51.0
+  resolution: "react-native-image-crop-picker@npm:0.51.0"
+  peerDependencies:
+    react: "*"
+    react-native: "*"
+  checksum: 791254bb07e6acca551933bde43f745e97dbe0ec60e37219d952a49227f3214d58e3e6f310340979e3670b6650a21ca8da5a865c66effe1e9d35ac0aa6b1f6ba
+  languageName: node
+  linkType: hard
+
+"react-native-image-picker@npm:^8.2.1":
+  version: 8.2.1
+  resolution: "react-native-image-picker@npm:8.2.1"
+  peerDependencies:
+    react: "*"
+    react-native: "*"
+  checksum: fc85bc278c0ba5ccef8cbacfce3001e994b34b0895be34e0c884021d2215802c2e553c5e97ff7f21a30e502be60000f90cf9555e9c2a19c71fdc76120d30e158
+  languageName: node
+  linkType: hard
+
 "react-native-monorepo-config@npm:^0.1.8, react-native-monorepo-config@npm:^0.1.9":
   version: 0.1.10
   resolution: "react-native-monorepo-config@npm:0.1.10"
@@ -10749,7 +10764,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"semver@npm:7.7.2, semver@npm:^7.1.3, semver@npm:^7.3.5, semver@npm:^7.3.7, semver@npm:^7.5.2, semver@npm:^7.5.3, semver@npm:^7.5.4, semver@npm:^7.6.0, semver@npm:^7.6.3":
+"semver@npm:7.7.2":
   version: 7.7.2
   resolution: "semver@npm:7.7.2"
   bin:
@@ -10764,6 +10779,15 @@ __metadata:
   bin:
     semver: bin/semver.js
   checksum: ae47d06de28836adb9d3e25f22a92943477371292d9b665fb023fae278d345d508ca1958232af086d85e0155aee22e313e100971898bbb8d5d89b8b1d4054ca2
+  languageName: node
+  linkType: hard
+
+"semver@npm:^7.1.3, semver@npm:^7.3.5, semver@npm:^7.3.7, semver@npm:^7.5.2, semver@npm:^7.5.3, semver@npm:^7.5.4, semver@npm:^7.6.0, semver@npm:^7.6.3":
+  version: 7.7.3
+  resolution: "semver@npm:7.7.3"
+  bin:
+    semver: bin/semver.js
+  checksum: f013a3ee4607857bcd3503b6ac1d80165f7f8ea94f5d55e2d3e33df82fce487aa3313b987abf9b39e0793c83c9fc67b76c36c067625141a9f6f704ae0ea18db2
   languageName: node
   linkType: hard
 
@@ -11739,10 +11763,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici-types@npm:~7.13.0":
-  version: 7.13.0
-  resolution: "undici-types@npm:7.13.0"
-  checksum: fcb3e1195a36615fce3935eb97c21ebe4dbafe968f831ed00e6f22e8e73c0655b8e3242acc6ba4ff0f3c34e3f3f860f19fbb59c00b261bd4e20b515abbc2de7c
+"undici-types@npm:~7.14.0":
+  version: 7.14.0
+  resolution: "undici-types@npm:7.14.0"
+  checksum: bd28cb36b33a51359f02c27b84bfe8563cdad57bdab0aa6ac605ce64d51aff49fd0aa4cb2d3b043caaa93c3ec42e96b5757df5d2d9bcc06a5f3e71899c765035
   languageName: node
   linkType: hard
 
