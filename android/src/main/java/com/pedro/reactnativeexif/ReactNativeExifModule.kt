@@ -45,6 +45,7 @@ class ReactNativeExifModule(reactContext: ReactApplicationContext) :
             ExifInterface.TAG_ORIENTATION,
             ExifInterface.TAG_X_RESOLUTION,
             ExifInterface.TAG_Y_RESOLUTION,
+            ExifInterface.TAG_PHOTOMETRIC_INTERPRETATION,
             ExifInterface.TAG_SUBSEC_TIME,
             ExifInterface.TAG_WHITE_BALANCE,
             ExifInterface.TAG_BITS_PER_SAMPLE,
@@ -62,7 +63,29 @@ class ReactNativeExifModule(reactContext: ReactApplicationContext) :
             ExifInterface.TAG_INTEROPERABILITY_INDEX,
             ExifInterface.TAG_MAKER_NOTE,
             ExifInterface.TAG_BITS_PER_SAMPLE,
-            ExifInterface.TAG_SHUTTER_SPEED_VALUE
+            ExifInterface.TAG_SHUTTER_SPEED_VALUE,
+            ExifInterface.TAG_COMPRESSION,
+            ExifInterface.TAG_SAMPLES_PER_PIXEL,
+            ExifInterface.TAG_PLANAR_CONFIGURATION,
+            ExifInterface.TAG_THUMBNAIL_IMAGE_LENGTH,
+            ExifInterface.TAG_THUMBNAIL_IMAGE_WIDTH,
+            ExifInterface.TAG_THUMBNAIL_ORIENTATION,
+            ExifInterface.TAG_DNG_VERSION,
+            ExifInterface.TAG_DEFAULT_CROP_SIZE,
+            ExifInterface.TAG_ORF_THUMBNAIL_IMAGE,
+            ExifInterface.TAG_ORF_PREVIEW_IMAGE_START,
+            ExifInterface.TAG_ORF_PREVIEW_IMAGE_LENGTH,
+            ExifInterface.TAG_ORF_ASPECT_FRAME,
+            ExifInterface.TAG_RW2_SENSOR_LEFT_BORDER,
+            ExifInterface.TAG_RW2_SENSOR_RIGHT_BORDER,
+            ExifInterface.TAG_RW2_SENSOR_TOP_BORDER,
+            ExifInterface.TAG_RW2_ISO,
+            ExifInterface.TAG_RW2_JPG_FROM_RAW,
+            ExifInterface.TAG_ORF_ASPECT_FRAME,
+            ExifInterface.TAG_ORF_ASPECT_FRAME,
+            ExifInterface.TAG_ORF_ASPECT_FRAME,
+            ExifInterface.TAG_ORF_ASPECT_FRAME,
+            ExifInterface.TAG_DATETIME_ORIGINAL
         )
     }
 

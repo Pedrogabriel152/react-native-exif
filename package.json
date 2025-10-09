@@ -1,6 +1,6 @@
 {
   "name": "@pedro.gabriel/react-native-exif",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "React Native Exif",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",

@@ -1,11 +1,14 @@
 # React Native Exif
 
 ## Installation
+
 ```sh
 yarn add @pedro.gabriel/react-native-exif
 react-native link
 ```
+
 or
+
 ```sh
 npm install @pedro.gabriel/react-native-exif --save
 react-native link
@@ -37,15 +40,16 @@ getExif('assets-library://asset/asset.JPG?id=xxxx&ext=JPG')
     .catch(msg => console.warn('ERROR: ' + msg))
 
 ```
+
 #### Exif values
 
-Value |
---- |
-ImageWidth |
-ImageHeight |
-Orientation |
-originalUri |
-exif|
+| Value       |
+| ----------- |
+| ImageWidth  |
+| ImageHeight |
+| Orientation |
+| originalUri |
+| exif        |
 
 ### getLatLong
 
