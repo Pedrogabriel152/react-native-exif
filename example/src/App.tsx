@@ -1,5 +1,5 @@
 import { Text, View, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { getLatLong } from '@pedro/react-native-exif';
+import { getLatLong } from '@pedro.gabriel/react-native-exif';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { useState } from 'react';
 import { Button } from './Button';
@@ -32,7 +32,7 @@ async function requestPermissions() {
 requestPermissions();
 
 export default function App() {
-  const [value, _setValue] = useState({
+  const [value, setValue] = useState({
     latitude: 0,
     longitude: 0,
     altitude: 0,
@@ -64,7 +64,16 @@ export default function App() {
     if (!result.assets || !result.assets.length || !result?.assets[0]!.uri) {
       return;
     }
-    var loc = await getLatLong(result.assets[0].uri);
+    const asset = result.assets[0];
+    const path =
+      Platform.OS === 'ios' && asset.id ? `ph://${asset.id}` : asset.uri;
+    var loc = await getLatLong(path);
+    setValue((prev) => ({
+      ...prev,
+      latitude: loc?.latitude ?? 0,
+      longitude: loc?.longitude ?? 0,
+      value: asset.uri ?? '',
+    }));
     console.log(result, loc);
   };
 
