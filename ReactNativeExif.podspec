@@ -10,12 +10,16 @@ Pod::Spec.new do |s|
   s.license      = package["license"]
   s.authors      = package["author"]
 
-  s.platforms    = { :ios => min_ios_version_supported }
-  s.source       = { :git => "https://github.com/Pedrogabriel152/react-native-exif.git", :tag => "#{s.version}" }
+  s.platforms    = { :ios => "13.4" }
+  s.source       = { :git => "https://github.com/Pedrogabriel152/react-native-exif.git", :tag => "v#{s.version}" }
 
   s.source_files = "ios/**/*.{h,m,mm,cpp}"
-  s.private_header_files = "ios/**/*.h"
 
+  s.dependency "React-Core"
 
-  install_modules_dependencies(s)
+  s.frameworks = "ImageIO"
+  
+  if s.respond_to?(:new_architecture_spec=)
+    s.new_architecture_spec = true
+  end
 end

@@ -2679,34 +2679,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@pedro/react-native-exif-example@workspace:example":
+"@pedro.gabriel/react-native-exif@workspace:*, @pedro.gabriel/react-native-exif@workspace:.":
   version: 0.0.0-use.local
-  resolution: "@pedro/react-native-exif-example@workspace:example"
-  dependencies:
-    "@babel/core": ^7.25.2
-    "@babel/preset-env": ^7.25.3
-    "@babel/runtime": ^7.25.0
-    "@react-native-community/cli": 20.0.0
-    "@react-native-community/cli-platform-android": 20.0.0
-    "@react-native-community/cli-platform-ios": 20.0.0
-    "@react-native/babel-preset": 0.81.1
-    "@react-native/metro-config": 0.81.1
-    "@react-native/new-app-screen": 0.81.1
-    "@react-native/typescript-config": 0.81.1
-    "@types/react": ^19.1.0
-    react: 19.1.0
-    react-native: 0.81.1
-    react-native-builder-bob: ^0.40.13
-    react-native-image-crop-picker: ^0.51.0
-    react-native-image-picker: ^8.2.1
-    react-native-monorepo-config: ^0.1.9
-    react-native-safe-area-context: ^5.5.2
-  languageName: unknown
-  linkType: soft
-
-"@pedro/react-native-exif@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "@pedro/react-native-exif@workspace:."
+  resolution: "@pedro.gabriel/react-native-exif@workspace:."
   dependencies:
     "@commitlint/config-conventional": ^19.8.1
     "@eslint/compat": ^1.3.2
@@ -2735,6 +2710,32 @@ __metadata:
   peerDependencies:
     react: "*"
     react-native: "*"
+  languageName: unknown
+  linkType: soft
+
+"@pedro/react-native-exif-example@workspace:example":
+  version: 0.0.0-use.local
+  resolution: "@pedro/react-native-exif-example@workspace:example"
+  dependencies:
+    "@babel/core": ^7.25.2
+    "@babel/preset-env": ^7.25.3
+    "@babel/runtime": ^7.25.0
+    "@pedro.gabriel/react-native-exif": "workspace:*"
+    "@react-native-community/cli": 20.0.0
+    "@react-native-community/cli-platform-android": 20.0.0
+    "@react-native-community/cli-platform-ios": 20.0.0
+    "@react-native/babel-preset": 0.81.1
+    "@react-native/metro-config": 0.81.1
+    "@react-native/new-app-screen": 0.81.1
+    "@react-native/typescript-config": 0.81.1
+    "@types/react": ^19.1.0
+    react: 19.1.0
+    react-native: 0.81.1
+    react-native-builder-bob: ^0.40.13
+    react-native-image-crop-picker: ^0.51.0
+    react-native-image-picker: ^8.2.1
+    react-native-monorepo-config: ^0.1.9
+    react-native-safe-area-context: ^5.5.2
   languageName: unknown
   linkType: soft
 
