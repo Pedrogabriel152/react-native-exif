@@ -61,10 +61,10 @@ export default function App() {
     if (result.didCancel) {
       return;
     }
-    if (!result.assets || !result.assets.length || !result?.assets[0]!.uri) {
+    const asset = result.assets?.[0];
+    if (!asset?.uri) {
       return;
     }
-    const asset = result.assets[0];
     const path =
       Platform.OS === 'ios' && asset.id ? `ph://${asset.id}` : asset.uri;
     var loc = await getLatLong(path);
