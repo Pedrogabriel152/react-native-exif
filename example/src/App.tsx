@@ -25,25 +25,13 @@ function pathForAsset(asset: Asset): string | undefined {
 
 import { PermissionsAndroid, Platform } from 'react-native';
 
+// Opcional: sem ela tudo funciona, só o GPS de fotos da galeria vem vazio no Android 10+.
 async function requestPermissions() {
-  if (Platform.OS === 'android') {
-    const granted = await PermissionsAndroid.requestMultiple([
-      PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-      // Adicione a permissão de acesso à localização de mídia
-      PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-      PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION,
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-      PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
-      PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO,
-    ]);
-
-    if (granted) {
-      return true;
-    }
-
-    return true;
+  if (Platform.OS === 'android' && Platform.Version >= 29) {
+    await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION
+    );
   }
-  return true;
 }
 requestPermissions();
 
