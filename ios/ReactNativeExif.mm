@@ -2,6 +2,7 @@
 
 #import <React/RCTBridgeModule.h>
 #import <Photos/Photos.h>
+#import <CoreLocation/CoreLocation.h>
 
 #import "Exif/RNExifReader.h"
 
@@ -46,31 +47,49 @@ static NSString *RNExifPhotoIdentifierFromPath(NSString *path) {
     return path;
 }
 
+static NSError *RNExifPhotoError(NSInteger code, NSString *message) {
+    return [NSError errorWithDomain:@"ReactNativeExifError"
+                               code:code
+                           userInfo:@{NSLocalizedDescriptionKey : message}];
+}
+
+static dispatch_queue_t RNExifWorkQueue(void) {
+    return dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0);
+}
+
+// So pede permissao quando ainda nao foi decidida; caso contrario usa o
+// status atual sem passar pelo PHPhotoLibrary a cada chamada.
 static void RNExifRequestPhotoAuthorization(void (^completion)(BOOL granted)) {
     if (@available(iOS 14, *)) {
+        PHAuthorizationStatus status =
+            [PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelReadWrite];
+        if (status != PHAuthorizationStatusNotDetermined) {
+            completion(status == PHAuthorizationStatusAuthorized ||
+                       status == PHAuthorizationStatusLimited);
+            return;
+        }
         [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelReadWrite
-                                                   handler:^(PHAuthorizationStatus status) {
-                                                     BOOL granted = (status == PHAuthorizationStatusAuthorized ||
-                                                                     status == PHAuthorizationStatusLimited);
-                                                     completion(granted);
+                                                   handler:^(PHAuthorizationStatus newStatus) {
+                                                     completion(newStatus == PHAuthorizationStatusAuthorized ||
+                                                                newStatus == PHAuthorizationStatusLimited);
                                                    }];
     } else {
-        [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
-          BOOL granted = (status == PHAuthorizationStatusAuthorized);
-          completion(granted);
+        PHAuthorizationStatus status = [PHPhotoLibrary authorizationStatus];
+        if (status != PHAuthorizationStatusNotDetermined) {
+            completion(status == PHAuthorizationStatusAuthorized);
+            return;
+        }
+        [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus newStatus) {
+          completion(newStatus == PHAuthorizationStatusAuthorized);
         }];
     }
 }
 
-static void RNExifFetchAssetData(NSString *path,
-                                 void (^completion)(NSData *data, NSError *error)) {
+static void RNExifFetchAsset(NSString *path,
+                             void (^completion)(PHAsset *asset, NSError *error)) {
     RNExifRequestPhotoAuthorization(^(BOOL granted) {
         if (!granted) {
-            NSError *error =
-                [NSError errorWithDomain:@"ReactNativeExifError"
-                                    code:20
-                                userInfo:@{NSLocalizedDescriptionKey : @"Permissao para fotos negada"}];
-            completion(nil, error);
+            completion(nil, RNExifPhotoError(20, @"Permissao para fotos negada"));
             return;
         }
 
@@ -87,39 +106,38 @@ static void RNExifFetchAssetData(NSString *path,
 
         PHAsset *asset = assets.firstObject;
         if (!asset) {
-            NSError *error =
-                [NSError errorWithDomain:@"ReactNativeExifError"
-                                    code:21
-                                userInfo:@{NSLocalizedDescriptionKey : @"Asset nao encontrado"}];
-            completion(nil, error);
+            completion(nil, RNExifPhotoError(21, @"Asset nao encontrado"));
             return;
         }
-
-        PHImageRequestOptions *options = [[PHImageRequestOptions alloc] init];
-        options.networkAccessAllowed = YES;
-        options.resizeMode = PHImageRequestOptionsResizeModeNone;
-        options.deliveryMode = PHImageRequestOptionsDeliveryModeHighQualityFormat;
-        options.version = PHImageRequestOptionsVersionOriginal;
-
-        [[PHImageManager defaultManager]
-            requestImageDataAndOrientationForAsset:asset
-                                            options:options
-                                      resultHandler:^(NSData *imageData,
-                                                      NSString *dataUTI,
-                                                      CGImagePropertyOrientation orientation,
-                                                      NSDictionary *info) {
-                                        NSError *error = info[PHImageErrorKey];
-                                        if (!imageData || error) {
-                                            NSError *finalError =
-                                                error ?: [NSError errorWithDomain:@"ReactNativeExifError"
-                                                                            code:22
-                                                                        userInfo:@{NSLocalizedDescriptionKey : @"Nao foi possivel ler o asset"}];
-                                            completion(nil, finalError);
-                                            return;
-                                        }
-                                        completion(imageData, nil);
-                                      }];
+        completion(asset, nil);
     });
+}
+
+// Obtem a URL do arquivo do asset em vez de carregar todos os bytes em
+// memoria: o ImageIO le so o cabecalho de metadados a partir da URL.
+static void RNExifFetchAssetFileURL(PHAsset *asset,
+                                    void (^completion)(NSURL *url, NSError *error)) {
+    PHContentEditingInputRequestOptions *options =
+        [[PHContentEditingInputRequestOptions alloc] init];
+    options.networkAccessAllowed = YES;
+    options.canHandleAdjustmentData = ^BOOL(PHAdjustmentData *adjustmentData) {
+        return NO;
+    };
+
+    [asset requestContentEditingInputWithOptions:options
+                               completionHandler:^(PHContentEditingInput *input,
+                                                   NSDictionary *info) {
+                                 NSURL *url = input.fullSizeImageURL;
+                                 if (!url) {
+                                     NSError *error = info[PHContentEditingInputErrorKey];
+                                     completion(nil, error ?: RNExifPhotoError(22, @"Nao foi possivel ler o asset"));
+                                     return;
+                                 }
+                                 // O completion vem na main queue; o parse vai para background.
+                                 dispatch_async(RNExifWorkQueue(), ^{
+                                   completion(url, nil);
+                                 });
+                               }];
 }
 
 static void RNExifGetExif(NSString *path,
@@ -138,21 +156,28 @@ static void RNExifGetExif(NSString *path,
         return;
     }
 
-    RNExifFetchAssetData(path, ^(NSData *data, NSError *error) {
-        if (!data) {
+    RNExifFetchAsset(path, ^(PHAsset *asset, NSError *error) {
+        if (!asset) {
             reject(@"EXIF_ERROR", error.localizedDescription ?: @"Erro ao ler EXIF", error);
             return;
         }
 
-        NSError *readError = nil;
-        NSMutableDictionary *exifData =
-            [[RNExifReader exifDataForImageData:data error:&readError] mutableCopy];
-        if (!exifData) {
-            reject(@"EXIF_ERROR", readError.localizedDescription ?: @"Erro ao ler EXIF", readError);
-            return;
-        }
-        exifData[@"originalUri"] = path ?: @"";
-        resolve(exifData);
+        RNExifFetchAssetFileURL(asset, ^(NSURL *url, NSError *urlError) {
+            if (!url) {
+                reject(@"EXIF_ERROR", urlError.localizedDescription ?: @"Erro ao ler EXIF", urlError);
+                return;
+            }
+
+            NSError *readError = nil;
+            NSMutableDictionary *exifData =
+                [[RNExifReader exifDataForPath:url.absoluteString error:&readError] mutableCopy];
+            if (!exifData) {
+                reject(@"EXIF_ERROR", readError.localizedDescription ?: @"Erro ao ler EXIF", readError);
+                return;
+            }
+            exifData[@"originalUri"] = path ?: @"";
+            resolve(exifData);
+        });
     });
 }
 
@@ -172,31 +197,41 @@ static void RNExifGetLatLong(NSString *path,
         return;
     }
 
-    RNExifFetchAssetData(path, ^(NSData *data, NSError *error) {
-        if (!data) {
+    RNExifFetchAsset(path, ^(PHAsset *asset, NSError *error) {
+        if (!asset) {
             reject(@"EXIF_ERROR", error.localizedDescription ?: @"Erro ao ler EXIF", error);
             return;
         }
 
-        NSError *readError = nil;
-        NSDictionary *latLong = [RNExifReader latLongForImageData:data error:&readError];
-        if (!latLong) {
-            reject(@"EXIF_ERROR", readError.localizedDescription ?: @"Erro ao ler EXIF", readError);
+        // A localizacao ja esta no banco do Photos: nenhum arquivo precisa ser lido.
+        CLLocation *location = asset.location;
+        if (location && CLLocationCoordinate2DIsValid(location.coordinate)) {
+            resolve(@{
+                @"latitude" : @(location.coordinate.latitude),
+                @"longitude" : @(location.coordinate.longitude),
+            });
             return;
         }
 
-        resolve(latLong);
+        RNExifFetchAssetFileURL(asset, ^(NSURL *url, NSError *urlError) {
+            if (!url) {
+                reject(@"EXIF_ERROR", urlError.localizedDescription ?: @"Erro ao ler EXIF", urlError);
+                return;
+            }
+
+            NSError *readError = nil;
+            NSDictionary *latLong = [RNExifReader latLongForPath:url.absoluteString error:&readError];
+            if (!latLong) {
+                reject(@"EXIF_ERROR", readError.localizedDescription ?: @"Erro ao ler EXIF", readError);
+                return;
+            }
+            resolve(latLong);
+        });
     });
 }
 
 @implementation ReactNativeExif
 RCT_EXPORT_MODULE()
-
-- (NSNumber *)multiply:(double)a b:(double)b {
-    NSNumber *result = @(a * b);
-
-    return result;
-}
 
 #if !RNEXIF_HAS_CODEGEN
 RCT_REMAP_METHOD(getExif,

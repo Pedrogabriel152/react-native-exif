@@ -5,6 +5,32 @@
 
 static NSString *const RNExifReaderErrorDomain = @"ReactNativeExifError";
 
+typedef NS_ENUM(NSInteger, RNExifSource) {
+  RNExifSourceRoot,
+  RNExifSourceTIFF,
+  RNExifSourceExif,
+  RNExifSourceGPS,
+};
+
+// Mapeamento tag -> (dicionário de origem, chave no ImageIO). Montado uma vez;
+// a ordem do array define a ordem das chaves no resultado.
+// __unsafe_unretained: todas as strings são literais/constantes do ImageIO
+// (vida estática), e o struct é copiado por bytes para dentro de NSValue.
+typedef struct {
+  __unsafe_unretained NSString *tag;
+  RNExifSource source;
+  __unsafe_unretained NSString *key;
+} RNExifTagEntry;
+
+static NSDictionary *RNExifShouldNotCacheOptions(void) {
+  static NSDictionary *options;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    options = @{(NSString *)kCGImageSourceShouldCache : @NO};
+  });
+  return options;
+}
+
 static NSURL *RNExifURLForPath(NSString *path) {
   if (path.length == 0) {
     return nil;
@@ -31,343 +57,194 @@ static NSString *RNExifStringValue(id value) {
     return [(NSNumber *)value stringValue];
   }
 
+  if ([value isKindOfClass:[NSData class]]) {
+    // Blobs binários não são serializados (evita strings enormes na ponte).
+    return nil;
+  }
+
   return [value description];
 }
 
-static NSArray<NSString *> *RNExifTags(void) {
-  static NSArray<NSString *> *tags;
-  static dispatch_once_t onceToken;
-  dispatch_once(&onceToken, ^{
-    tags = @[
-      @"DateTime",
-      @"DateTimeDigitized",
-      @"ExposureTime",
-      @"Flash",
-      @"FocalLength",
-      @"GPSAltitude",
-      @"GPSAltitudeRef",
-      @"GPSDateStamp",
-      @"GPSLatitude",
-      @"GPSLatitudeRef",
-      @"GPSLongitude",
-      @"GPSLongitudeRef",
-      @"GPSProcessingMethod",
-      @"GPSTimeStamp",
-      @"ImageLength",
-      @"ImageWidth",
-      @"Make",
-      @"Model",
-      @"Orientation",
-      @"XResolution",
-      @"YResolution",
-      @"PhotometricInterpretation",
-      @"SubSecTime",
-      @"WhiteBalance",
-      @"BitsPerSample",
-      @"CompressedBitsPerPixel",
-      @"ColorSpace",
-      @"Software",
-      @"YCbCrPositioning",
-      @"ResolutionUnit",
-      @"ExposureProgram",
-      @"ExifVersion",
-      @"ExposureBiasValue",
-      @"MaxApertureValue",
-      @"MeteringMode",
-      @"InteroperabilityIndex",
-      @"MakerNote",
-      @"ShutterSpeedValue",
-      @"Compression",
-      @"SamplesPerPixel",
-      @"PlanarConfiguration",
-      @"ThumbnailImageLength",
-      @"ThumbnailImageWidth",
-      @"ThumbnailOrientation",
-      @"DNGVersion",
-      @"DefaultCropSize",
-      @"ORFThumbnailImage",
-      @"ORFPreviewImageStart",
-      @"ORFPreviewImageLength",
-      @"ORFAspectFrame",
-      @"RW2SensorLeftBorder",
-      @"RW2SensorRightBorder",
-      @"RW2SensorTopBorder",
-      @"RW2ISO",
-      @"RW2JpgFromRaw",
-      @"DateTimeOriginal",
-    ];
-  });
-
-  return tags;
+static NSError *RNExifError(NSInteger code, NSString *message) {
+  return [NSError errorWithDomain:RNExifReaderErrorDomain
+                             code:code
+                         userInfo:@{NSLocalizedDescriptionKey : message}];
 }
 
-static id RNExifValueForTag(NSString *tag,
-                            NSDictionary *properties,
-                            NSDictionary *tiff,
-                            NSDictionary *exif,
-                            NSDictionary *gps) {
-  if ([tag isEqualToString:@"DateTime"]) {
-    return tiff[(NSString *)kCGImagePropertyTIFFDateTime];
-  }
-  if ([tag isEqualToString:@"DateTimeDigitized"]) {
-    return exif[(NSString *)kCGImagePropertyExifDateTimeDigitized];
-  }
-  if ([tag isEqualToString:@"DateTimeOriginal"]) {
-    return exif[(NSString *)kCGImagePropertyExifDateTimeOriginal];
-  }
-  if ([tag isEqualToString:@"ExposureTime"]) {
-    return exif[(NSString *)kCGImagePropertyExifExposureTime];
-  }
-  if ([tag isEqualToString:@"Flash"]) {
-    return exif[(NSString *)kCGImagePropertyExifFlash];
-  }
-  if ([tag isEqualToString:@"FocalLength"]) {
-    return exif[(NSString *)kCGImagePropertyExifFocalLength];
-  }
-  if ([tag isEqualToString:@"GPSAltitude"]) {
-    return gps[(NSString *)kCGImagePropertyGPSAltitude];
-  }
-  if ([tag isEqualToString:@"GPSAltitudeRef"]) {
-    return gps[(NSString *)kCGImagePropertyGPSAltitudeRef];
-  }
-  if ([tag isEqualToString:@"GPSDateStamp"]) {
-    return gps[(NSString *)kCGImagePropertyGPSDateStamp];
-  }
-  if ([tag isEqualToString:@"GPSLatitude"]) {
-    return gps[(NSString *)kCGImagePropertyGPSLatitude];
-  }
-  if ([tag isEqualToString:@"GPSLatitudeRef"]) {
-    return gps[(NSString *)kCGImagePropertyGPSLatitudeRef];
-  }
-  if ([tag isEqualToString:@"GPSLongitude"]) {
-    return gps[(NSString *)kCGImagePropertyGPSLongitude];
-  }
-  if ([tag isEqualToString:@"GPSLongitudeRef"]) {
-    return gps[(NSString *)kCGImagePropertyGPSLongitudeRef];
-  }
-  if ([tag isEqualToString:@"GPSProcessingMethod"]) {
-    return gps[(NSString *)kCGImagePropertyGPSProcessingMethod];
-  }
-  if ([tag isEqualToString:@"GPSTimeStamp"]) {
-    return gps[(NSString *)kCGImagePropertyGPSTimeStamp];
-  }
-  if ([tag isEqualToString:@"ImageLength"]) {
-    return properties[(NSString *)kCGImagePropertyPixelHeight];
-  }
-  if ([tag isEqualToString:@"ImageWidth"]) {
-    return properties[(NSString *)kCGImagePropertyPixelWidth];
-  }
-  if ([tag isEqualToString:@"Make"]) {
-    return tiff[(NSString *)kCGImagePropertyTIFFMake];
-  }
-  if ([tag isEqualToString:@"Model"]) {
-    return tiff[(NSString *)kCGImagePropertyTIFFModel];
-  }
-  if ([tag isEqualToString:@"Orientation"]) {
-    return properties[(NSString *)kCGImagePropertyOrientation];
-  }
-  if ([tag isEqualToString:@"XResolution"]) {
-    return tiff[(NSString *)kCGImagePropertyTIFFXResolution];
-  }
-  if ([tag isEqualToString:@"YResolution"]) {
-    return tiff[(NSString *)kCGImagePropertyTIFFYResolution];
-  }
-  if ([tag isEqualToString:@"PhotometricInterpretation"]) {
-    return tiff[(NSString *)kCGImagePropertyTIFFPhotometricInterpretation];
-  }
-  if ([tag isEqualToString:@"SubSecTime"]) {
-    return exif[(NSString *)kCGImagePropertyExifSubsecTime];
-  }
-  if ([tag isEqualToString:@"WhiteBalance"]) {
-    return exif[(NSString *)kCGImagePropertyExifWhiteBalance];
-  }
-  if ([tag isEqualToString:@"BitsPerSample"]) {
-    #ifdef kCGImagePropertyTIFFBitsPerSample
-      return tiff[(NSString *)kCGImagePropertyTIFFBitsPerSample];
-    #else
-      return tiff[@"BitsPerSample"];
-    #endif
-  }
-  if ([tag isEqualToString:@"CompressedBitsPerPixel"]) {
-    return exif[(NSString *)kCGImagePropertyExifCompressedBitsPerPixel];
-  }
-  if ([tag isEqualToString:@"ColorSpace"]) {
-    return exif[(NSString *)kCGImagePropertyExifColorSpace];
-  }
-  if ([tag isEqualToString:@"Software"]) {
-    return tiff[(NSString *)kCGImagePropertyTIFFSoftware];
-  }
-  if ([tag isEqualToString:@"YCbCrPositioning"]) {
-    #ifdef kCGImagePropertyTIFFYCbCrPositioning
-      return tiff[(NSString *)kCGImagePropertyTIFFYCbCrPositioning];
-    #else
-      return tiff[@"YCbCrPositioning"];
-    #endif
-  }
-  if ([tag isEqualToString:@"ResolutionUnit"]) {
-    return tiff[(NSString *)kCGImagePropertyTIFFResolutionUnit];
-  }
-  if ([tag isEqualToString:@"ExposureProgram"]) {
-    return exif[(NSString *)kCGImagePropertyExifExposureProgram];
-  }
-  if ([tag isEqualToString:@"ExifVersion"]) {
-    return exif[(NSString *)kCGImagePropertyExifVersion];
-  }
-  if ([tag isEqualToString:@"ExposureBiasValue"]) {
-    return exif[(NSString *)kCGImagePropertyExifExposureBiasValue];
-  }
-  if ([tag isEqualToString:@"MaxApertureValue"]) {
-    return exif[(NSString *)kCGImagePropertyExifMaxApertureValue];
-  }
-  if ([tag isEqualToString:@"MeteringMode"]) {
-    return exif[(NSString *)kCGImagePropertyExifMeteringMode];
-  }
-  if ([tag isEqualToString:@"InteroperabilityIndex"]) {
-    #ifdef kCGImagePropertyExifInteroperabilityIndex
-      return exif[(NSString *)kCGImagePropertyExifInteroperabilityIndex];
-    #else
-      return exif[@"InteroperabilityIndex"];
-    #endif
-  }
-  if ([tag isEqualToString:@"MakerNote"]) {
-    return exif[(NSString *)kCGImagePropertyExifMakerNote];
-  }
-  if ([tag isEqualToString:@"ShutterSpeedValue"]) {
-    return exif[(NSString *)kCGImagePropertyExifShutterSpeedValue];
-  }
-  if ([tag isEqualToString:@"Compression"]) {
-    return tiff[(NSString *)kCGImagePropertyTIFFCompression];
-  }
-  if ([tag isEqualToString:@"SamplesPerPixel"]) {
-    #ifdef kCGImagePropertyTIFFSamplesPerPixel
-      return tiff[(NSString *)kCGImagePropertyTIFFSamplesPerPixel];
-    #else
-      return tiff[@"SamplesPerPixel"];
-    #endif
-  }
-  if ([tag isEqualToString:@"PlanarConfiguration"]) {
-    #ifdef kCGImagePropertyTIFFPlanarConfiguration
-      return tiff[(NSString *)kCGImagePropertyTIFFPlanarConfiguration];
-    #else
-      return tiff[@"PlanarConfiguration"];
-    #endif
-  }
-  if ([tag isEqualToString:@"ThumbnailImageLength"]) {
-    #ifdef kCGImagePropertyTIFFThumbnailImageLength
-      return tiff[(NSString *)kCGImagePropertyTIFFThumbnailImageLength];
-    #else
-      return tiff[@"ThumbnailImageLength"];
-    #endif
-  }
-  if ([tag isEqualToString:@"ThumbnailImageWidth"]) {
-    #ifdef kCGImagePropertyTIFFThumbnailImageWidth
-      return tiff[(NSString *)kCGImagePropertyTIFFThumbnailImageWidth];
-    #else
-      return tiff[@"ThumbnailImageWidth"];
-    #endif
-  }
-  if ([tag isEqualToString:@"ThumbnailOrientation"]) {
-    #ifdef kCGImagePropertyTIFFThumbnailOrientation
-      return tiff[(NSString *)kCGImagePropertyTIFFThumbnailOrientation];
-    #else
-      return tiff[@"ThumbnailOrientation"];
-    #endif
-  }
-  if ([tag isEqualToString:@"DNGVersion"]) {
-    #ifdef kCGImagePropertyExifDNGVersion
-      return exif[(NSString *)kCGImagePropertyExifDNGVersion];
-    #else
-      return exif[@"DNGVersion"];
-    #endif
-  }
-  if ([tag isEqualToString:@"DefaultCropSize"]) {
-    #ifdef kCGImagePropertyExifDefaultCropSize
-      return exif[(NSString *)kCGImagePropertyExifDefaultCropSize];
-    #else
-      return exif[@"DefaultCropSize"];
-    #endif
+static NSDictionary *RNExifPropertiesForSource(CGImageSourceRef source,
+                                               NSInteger errorCode,
+                                               NSError **error) {
+  CFDictionaryRef properties = CGImageSourceCopyPropertiesAtIndex(
+      source, 0, (__bridge CFDictionaryRef)RNExifShouldNotCacheOptions());
+  CFRelease(source);
+
+  if (!properties) {
+    if (error) {
+      *error = RNExifError(errorCode, @"Nao foi possivel ler as propriedades");
+    }
+    return nil;
   }
 
-  return nil;
+  return (__bridge_transfer NSDictionary *)properties;
 }
 
 static NSDictionary *RNExifPropertiesForPath(NSString *path, NSError **error) {
   NSURL *url = RNExifURLForPath(path);
   if (!url) {
     if (error) {
-      *error = [NSError errorWithDomain:RNExifReaderErrorDomain
-                                   code:1
-                               userInfo:@{NSLocalizedDescriptionKey : @"Caminho vazio"}];
+      *error = RNExifError(1, @"Caminho vazio");
     }
     return nil;
   }
 
-  CGImageSourceRef source =
-      CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
+  CGImageSourceRef source = CGImageSourceCreateWithURL(
+      (__bridge CFURLRef)url, (__bridge CFDictionaryRef)RNExifShouldNotCacheOptions());
   if (!source) {
     if (error) {
-      *error = [NSError errorWithDomain:RNExifReaderErrorDomain
-                                   code:2
-                               userInfo:@{NSLocalizedDescriptionKey : @"Nao foi possivel abrir a imagem"}];
+      *error = RNExifError(2, @"Nao foi possivel abrir a imagem");
     }
     return nil;
   }
 
-  CFDictionaryRef properties =
-      CGImageSourceCopyPropertiesAtIndex(source, 0, NULL);
-  CFRelease(source);
-
-  if (!properties) {
-    if (error) {
-      *error = [NSError errorWithDomain:RNExifReaderErrorDomain
-                                   code:3
-                               userInfo:@{NSLocalizedDescriptionKey : @"Nao foi possivel ler as propriedades"}];
-    }
-    return nil;
-  }
-
-  NSDictionary *result = [(__bridge NSDictionary *)properties copy];
-  CFRelease(properties);
-  return result;
+  return RNExifPropertiesForSource(source, 3, error);
 }
 
 static NSDictionary *RNExifPropertiesForData(NSData *data, NSError **error) {
   if (!data || data.length == 0) {
     if (error) {
-      *error = [NSError errorWithDomain:RNExifReaderErrorDomain
-                                   code:4
-                               userInfo:@{NSLocalizedDescriptionKey : @"Dados de imagem vazios"}];
+      *error = RNExifError(4, @"Dados de imagem vazios");
     }
     return nil;
   }
 
-  CGImageSourceRef source =
-      CGImageSourceCreateWithData((__bridge CFDataRef)data, NULL);
+  CGImageSourceRef source = CGImageSourceCreateWithData(
+      (__bridge CFDataRef)data, (__bridge CFDictionaryRef)RNExifShouldNotCacheOptions());
   if (!source) {
     if (error) {
-      *error = [NSError errorWithDomain:RNExifReaderErrorDomain
-                                   code:5
-                               userInfo:@{NSLocalizedDescriptionKey : @"Nao foi possivel abrir os dados da imagem"}];
+      *error = RNExifError(5, @"Nao foi possivel abrir os dados da imagem");
     }
     return nil;
   }
 
-  CFDictionaryRef properties =
-      CGImageSourceCopyPropertiesAtIndex(source, 0, NULL);
-  CFRelease(source);
+  return RNExifPropertiesForSource(source, 6, error);
+}
 
-  if (!properties) {
-    if (error) {
-      *error = [NSError errorWithDomain:RNExifReaderErrorDomain
-                                   code:6
-                               userInfo:@{NSLocalizedDescriptionKey : @"Nao foi possivel ler as propriedades"}];
+static NSArray<NSValue *> *RNExifTagTable(void) {
+  static NSArray<NSValue *> *table;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    RNExifTagEntry entries[] = {
+      {@"DateTime", RNExifSourceTIFF, (NSString *)kCGImagePropertyTIFFDateTime},
+      {@"DateTimeDigitized", RNExifSourceExif, (NSString *)kCGImagePropertyExifDateTimeDigitized},
+      {@"ExposureTime", RNExifSourceExif, (NSString *)kCGImagePropertyExifExposureTime},
+      {@"Flash", RNExifSourceExif, (NSString *)kCGImagePropertyExifFlash},
+      {@"FocalLength", RNExifSourceExif, (NSString *)kCGImagePropertyExifFocalLength},
+      {@"GPSAltitude", RNExifSourceGPS, (NSString *)kCGImagePropertyGPSAltitude},
+      {@"GPSAltitudeRef", RNExifSourceGPS, (NSString *)kCGImagePropertyGPSAltitudeRef},
+      {@"GPSDateStamp", RNExifSourceGPS, (NSString *)kCGImagePropertyGPSDateStamp},
+      {@"GPSLatitude", RNExifSourceGPS, (NSString *)kCGImagePropertyGPSLatitude},
+      {@"GPSLatitudeRef", RNExifSourceGPS, (NSString *)kCGImagePropertyGPSLatitudeRef},
+      {@"GPSLongitude", RNExifSourceGPS, (NSString *)kCGImagePropertyGPSLongitude},
+      {@"GPSLongitudeRef", RNExifSourceGPS, (NSString *)kCGImagePropertyGPSLongitudeRef},
+      {@"GPSProcessingMethod", RNExifSourceGPS, (NSString *)kCGImagePropertyGPSProcessingMethod},
+      {@"GPSTimeStamp", RNExifSourceGPS, (NSString *)kCGImagePropertyGPSTimeStamp},
+      {@"ImageLength", RNExifSourceRoot, (NSString *)kCGImagePropertyPixelHeight},
+      {@"ImageWidth", RNExifSourceRoot, (NSString *)kCGImagePropertyPixelWidth},
+      {@"Make", RNExifSourceTIFF, (NSString *)kCGImagePropertyTIFFMake},
+      {@"Model", RNExifSourceTIFF, (NSString *)kCGImagePropertyTIFFModel},
+      {@"Orientation", RNExifSourceRoot, (NSString *)kCGImagePropertyOrientation},
+      {@"XResolution", RNExifSourceTIFF, (NSString *)kCGImagePropertyTIFFXResolution},
+      {@"YResolution", RNExifSourceTIFF, (NSString *)kCGImagePropertyTIFFYResolution},
+      {@"PhotometricInterpretation", RNExifSourceTIFF, (NSString *)kCGImagePropertyTIFFPhotometricInterpretation},
+      {@"SubSecTime", RNExifSourceExif, (NSString *)kCGImagePropertyExifSubsecTime},
+      {@"WhiteBalance", RNExifSourceExif, (NSString *)kCGImagePropertyExifWhiteBalance},
+      {@"BitsPerSample", RNExifSourceTIFF, @"BitsPerSample"},
+      {@"CompressedBitsPerPixel", RNExifSourceExif, (NSString *)kCGImagePropertyExifCompressedBitsPerPixel},
+      {@"ColorSpace", RNExifSourceExif, (NSString *)kCGImagePropertyExifColorSpace},
+      {@"Software", RNExifSourceTIFF, (NSString *)kCGImagePropertyTIFFSoftware},
+      {@"YCbCrPositioning", RNExifSourceTIFF, @"YCbCrPositioning"},
+      {@"ResolutionUnit", RNExifSourceTIFF, (NSString *)kCGImagePropertyTIFFResolutionUnit},
+      {@"ExposureProgram", RNExifSourceExif, (NSString *)kCGImagePropertyExifExposureProgram},
+      {@"ExifVersion", RNExifSourceExif, (NSString *)kCGImagePropertyExifVersion},
+      {@"ExposureBiasValue", RNExifSourceExif, (NSString *)kCGImagePropertyExifExposureBiasValue},
+      {@"MaxApertureValue", RNExifSourceExif, (NSString *)kCGImagePropertyExifMaxApertureValue},
+      {@"MeteringMode", RNExifSourceExif, (NSString *)kCGImagePropertyExifMeteringMode},
+      {@"InteroperabilityIndex", RNExifSourceExif, @"InteroperabilityIndex"},
+      {@"ShutterSpeedValue", RNExifSourceExif, (NSString *)kCGImagePropertyExifShutterSpeedValue},
+      {@"Compression", RNExifSourceTIFF, (NSString *)kCGImagePropertyTIFFCompression},
+      {@"SamplesPerPixel", RNExifSourceTIFF, @"SamplesPerPixel"},
+      {@"PlanarConfiguration", RNExifSourceTIFF, @"PlanarConfiguration"},
+      {@"ThumbnailImageLength", RNExifSourceTIFF, @"ThumbnailImageLength"},
+      {@"ThumbnailImageWidth", RNExifSourceTIFF, @"ThumbnailImageWidth"},
+      {@"ThumbnailOrientation", RNExifSourceTIFF, @"ThumbnailOrientation"},
+      {@"DNGVersion", RNExifSourceExif, @"DNGVersion"},
+      {@"DefaultCropSize", RNExifSourceExif, @"DefaultCropSize"},
+      // Sem fonte equivalente no ImageIO: mantidas como null para paridade de chaves.
+      {@"ORFPreviewImageStart", RNExifSourceRoot, nil},
+      {@"ORFPreviewImageLength", RNExifSourceRoot, nil},
+      {@"ORFAspectFrame", RNExifSourceRoot, nil},
+      {@"RW2SensorLeftBorder", RNExifSourceRoot, nil},
+      {@"RW2SensorRightBorder", RNExifSourceRoot, nil},
+      {@"RW2SensorTopBorder", RNExifSourceRoot, nil},
+      {@"RW2ISO", RNExifSourceRoot, nil},
+      {@"DateTimeOriginal", RNExifSourceExif, (NSString *)kCGImagePropertyExifDateTimeOriginal},
+    };
+
+    size_t count = sizeof(entries) / sizeof(entries[0]);
+    NSMutableArray<NSValue *> *values = [NSMutableArray arrayWithCapacity:count];
+    for (size_t i = 0; i < count; i++) {
+      [values addObject:[NSValue valueWithBytes:&entries[i] objCType:@encode(RNExifTagEntry)]];
     }
-    return nil;
+    table = [values copy];
+  });
+  return table;
+}
+
+static NSMutableDictionary<NSString *, id> *RNExifDataFromProperties(NSDictionary *properties) {
+  NSDictionary *sources[4] = {
+    properties,
+    properties[(NSString *)kCGImagePropertyTIFFDictionary],
+    properties[(NSString *)kCGImagePropertyExifDictionary],
+    properties[(NSString *)kCGImagePropertyGPSDictionary],
+  };
+
+  NSArray<NSValue *> *table = RNExifTagTable();
+  NSMutableDictionary<NSString *, id> *result =
+      [NSMutableDictionary dictionaryWithCapacity:table.count + 1];
+
+  for (NSValue *value in table) {
+    RNExifTagEntry entry;
+    [value getValue:&entry];
+    id raw = entry.key ? sources[entry.source][entry.key] : nil;
+    result[entry.tag] = RNExifStringValue(raw) ?: [NSNull null];
   }
 
-  NSDictionary *result = [(__bridge NSDictionary *)properties copy];
-  CFRelease(properties);
   return result;
+}
+
+static NSDictionary<NSString *, NSNumber *> *RNExifLatLongFromProperties(NSDictionary *properties) {
+  NSDictionary *gps = properties[(NSString *)kCGImagePropertyGPSDictionary];
+  NSNumber *latitudeNumber = gps[(NSString *)kCGImagePropertyGPSLatitude];
+  NSNumber *longitudeNumber = gps[(NSString *)kCGImagePropertyGPSLongitude];
+  NSString *latitudeRef = gps[(NSString *)kCGImagePropertyGPSLatitudeRef];
+  NSString *longitudeRef = gps[(NSString *)kCGImagePropertyGPSLongitudeRef];
+
+  double latitude = latitudeNumber ? [latitudeNumber doubleValue] : 0.0;
+  double longitude = longitudeNumber ? [longitudeNumber doubleValue] : 0.0;
+
+  if ([latitudeRef isKindOfClass:[NSString class]] &&
+      [latitudeRef caseInsensitiveCompare:@"S"] == NSOrderedSame) {
+    latitude = -latitude;
+  }
+  if ([longitudeRef isKindOfClass:[NSString class]] &&
+      [longitudeRef caseInsensitiveCompare:@"W"] == NSOrderedSame) {
+    longitude = -longitude;
+  }
+
+  return @{
+    @"latitude" : @(latitude),
+    @"longitude" : @(longitude),
+  };
 }
 
 @implementation RNExifReader
@@ -379,19 +256,7 @@ static NSDictionary *RNExifPropertiesForData(NSData *data, NSError **error) {
     return nil;
   }
 
-  NSDictionary *tiff = properties[(NSString *)kCGImagePropertyTIFFDictionary];
-  NSDictionary *exif = properties[(NSString *)kCGImagePropertyExifDictionary];
-  NSDictionary *gps = properties[(NSString *)kCGImagePropertyGPSDictionary];
-
-  NSMutableDictionary<NSString *, id> *result =
-      [NSMutableDictionary dictionaryWithCapacity:RNExifTags().count + 1];
-
-  for (NSString *tag in RNExifTags()) {
-    id value = RNExifValueForTag(tag, properties, tiff, exif, gps);
-    NSString *stringValue = RNExifStringValue(value);
-    result[tag] = stringValue ?: [NSNull null];
-  }
-
+  NSMutableDictionary<NSString *, id> *result = RNExifDataFromProperties(properties);
   result[@"originalUri"] = path ?: @"";
   return result;
 }
@@ -399,86 +264,19 @@ static NSDictionary *RNExifPropertiesForData(NSData *data, NSError **error) {
 + (NSDictionary<NSString *, NSNumber *> *)latLongForPath:(NSString *)path
                                                    error:(NSError **)error {
   NSDictionary *properties = RNExifPropertiesForPath(path, error);
-  if (!properties) {
-    return nil;
-  }
-
-  NSDictionary *gps = properties[(NSString *)kCGImagePropertyGPSDictionary];
-  NSNumber *latitudeNumber = gps[(NSString *)kCGImagePropertyGPSLatitude];
-  NSNumber *longitudeNumber = gps[(NSString *)kCGImagePropertyGPSLongitude];
-  NSString *latitudeRef = gps[(NSString *)kCGImagePropertyGPSLatitudeRef];
-  NSString *longitudeRef = gps[(NSString *)kCGImagePropertyGPSLongitudeRef];
-
-  double latitude = latitudeNumber ? [latitudeNumber doubleValue] : 0.0;
-  double longitude = longitudeNumber ? [longitudeNumber doubleValue] : 0.0;
-
-  if ([latitudeRef isKindOfClass:[NSString class]] &&
-      [[latitudeRef uppercaseString] isEqualToString:@"S"]) {
-    latitude = -latitude;
-  }
-  if ([longitudeRef isKindOfClass:[NSString class]] &&
-      [[longitudeRef uppercaseString] isEqualToString:@"W"]) {
-    longitude = -longitude;
-  }
-
-  return @{
-    @"latitude" : @(latitude),
-    @"longitude" : @(longitude),
-  };
+  return properties ? RNExifLatLongFromProperties(properties) : nil;
 }
 
 + (NSDictionary<NSString *, id> *)exifDataForImageData:(NSData *)data
                                                  error:(NSError **)error {
   NSDictionary *properties = RNExifPropertiesForData(data, error);
-  if (!properties) {
-    return nil;
-  }
-
-  NSDictionary *tiff = properties[(NSString *)kCGImagePropertyTIFFDictionary];
-  NSDictionary *exif = properties[(NSString *)kCGImagePropertyExifDictionary];
-  NSDictionary *gps = properties[(NSString *)kCGImagePropertyGPSDictionary];
-
-  NSMutableDictionary<NSString *, id> *result =
-      [NSMutableDictionary dictionaryWithCapacity:RNExifTags().count + 1];
-
-  for (NSString *tag in RNExifTags()) {
-    id value = RNExifValueForTag(tag, properties, tiff, exif, gps);
-    NSString *stringValue = RNExifStringValue(value);
-    result[tag] = stringValue ?: [NSNull null];
-  }
-
-  return result;
+  return properties ? RNExifDataFromProperties(properties) : nil;
 }
 
 + (NSDictionary<NSString *, NSNumber *> *)latLongForImageData:(NSData *)data
                                                         error:(NSError **)error {
   NSDictionary *properties = RNExifPropertiesForData(data, error);
-  if (!properties) {
-    return nil;
-  }
-
-  NSDictionary *gps = properties[(NSString *)kCGImagePropertyGPSDictionary];
-  NSNumber *latitudeNumber = gps[(NSString *)kCGImagePropertyGPSLatitude];
-  NSNumber *longitudeNumber = gps[(NSString *)kCGImagePropertyGPSLongitude];
-  NSString *latitudeRef = gps[(NSString *)kCGImagePropertyGPSLatitudeRef];
-  NSString *longitudeRef = gps[(NSString *)kCGImagePropertyGPSLongitudeRef];
-
-  double latitude = latitudeNumber ? [latitudeNumber doubleValue] : 0.0;
-  double longitude = longitudeNumber ? [longitudeNumber doubleValue] : 0.0;
-
-  if ([latitudeRef isKindOfClass:[NSString class]] &&
-      [[latitudeRef uppercaseString] isEqualToString:@"S"]) {
-    latitude = -latitude;
-  }
-  if ([longitudeRef isKindOfClass:[NSString class]] &&
-      [[longitudeRef uppercaseString] isEqualToString:@"W"]) {
-    longitude = -longitude;
-  }
-
-  return @{
-    @"latitude" : @(latitude),
-    @"longitude" : @(longitude),
-  };
+  return properties ? RNExifLatLongFromProperties(properties) : nil;
 }
 
 @end

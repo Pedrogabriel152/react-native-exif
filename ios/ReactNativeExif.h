@@ -13,7 +13,6 @@
 @interface ReactNativeExif : NSObject <RCTBridgeModule>
 #endif
 
-- (NSNumber *)multiply:(double)a b:(double)b;
 - (void)getExif:(NSString *)path
         resolve:(RCTPromiseResolveBlock)resolve
          reject:(RCTPromiseRejectBlock)reject;

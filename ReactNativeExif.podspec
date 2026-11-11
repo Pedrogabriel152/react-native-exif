@@ -17,7 +17,7 @@ Pod::Spec.new do |s|
 
   s.dependency "React-Core"
 
-  s.frameworks = "ImageIO"
+  s.frameworks = "ImageIO", "Photos", "CoreLocation"
   
   if s.respond_to?(:new_architecture_spec=)
     s.new_architecture_spec = true
