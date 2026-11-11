@@ -19,5 +19,11 @@
 - (void)getLatLong:(NSString *)path
            resolve:(RCTPromiseResolveBlock)resolve
             reject:(RCTPromiseRejectBlock)reject;
+- (void)getExifBatch:(NSArray *)paths
+             resolve:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject;
+- (void)getLatLongBatch:(NSArray *)paths
+                resolve:(RCTPromiseResolveBlock)resolve
+                 reject:(RCTPromiseRejectBlock)reject;
 
 @end

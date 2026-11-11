@@ -4,6 +4,8 @@ import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableArray
+import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.module.annotations.ReactModule
 import java.util.concurrent.ExecutorService
@@ -35,24 +37,70 @@ class ReactNativeExifModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     override fun getExif(uri: String, promise: Promise) {
         runAsync(promise, "Erro ao ler EXIF") {
-            val exifMap = Arguments.createMap()
-            for ((tag, value) in reader.readExif(uri)) {
-                exifMap.putString(tag, value)
-            }
-            exifMap.putString("originalUri", uri)
-            exifMap
+            exifToMap(uri, reader.readExif(uri))
         }
     }
 
     @ReactMethod
     override fun getLatLong(path: String, promise: Promise) {
         runAsync(promise, "Erro ao ler EXIF") {
-            val latLong = reader.readLatLong(path)
-            val result = Arguments.createMap()
-            result.putDouble("latitude", latLong?.get(0) ?: 0.0)
-            result.putDouble("longitude", latLong?.get(1) ?: 0.0)
-            result
+            latLongToMap(reader.readLatLong(path))
         }
+    }
+
+    @ReactMethod
+    override fun getExifBatch(paths: ReadableArray, promise: Promise) {
+        reader.readExifBatch(toPathList(paths), executor) { results ->
+            promise.resolve(batchToArray(results) { path, exif -> exifToMap(path, exif) })
+        }
+    }
+
+    @ReactMethod
+    override fun getLatLongBatch(paths: ReadableArray, promise: Promise) {
+        reader.readLatLongBatch(toPathList(paths), executor) { results ->
+            promise.resolve(batchToArray(results) { _, latLong -> latLongToMap(latLong) })
+        }
+    }
+
+    private fun toPathList(paths: ReadableArray): List<String> =
+        List(paths.size()) { index -> paths.getString(index) ?: "" }
+
+    private fun exifToMap(uri: String, exif: Map<String, String?>): WritableMap {
+        val map = Arguments.createMap()
+        for ((tag, value) in exif) {
+            map.putString(tag, value)
+        }
+        map.putString("originalUri", uri)
+        return map
+    }
+
+    // Sem GPS devolve 0,0 (mesmo contrato do getLatLong individual).
+    private fun latLongToMap(latLong: DoubleArray?): WritableMap {
+        val map = Arguments.createMap()
+        map.putDouble("latitude", latLong?.get(0) ?: 0.0)
+        map.putDouble("longitude", latLong?.get(1) ?: 0.0)
+        return map
+    }
+
+    private fun <T> batchToArray(
+        results: List<BatchResult<T>>,
+        toMap: (String, T) -> WritableMap
+    ): WritableArray {
+        val array = Arguments.createArray()
+        for (result in results) {
+            val item = Arguments.createMap()
+            item.putString("path", result.path)
+            if (result.error == null) {
+                @Suppress("UNCHECKED_CAST")
+                item.putMap("data", toMap(result.path, result.data as T))
+                item.putNull("error")
+            } else {
+                item.putNull("data")
+                item.putString("error", result.error)
+            }
+            array.pushMap(item)
+        }
+        return array
     }
 
     private fun runAsync(promise: Promise, fallbackMessage: String, block: () -> WritableMap) {

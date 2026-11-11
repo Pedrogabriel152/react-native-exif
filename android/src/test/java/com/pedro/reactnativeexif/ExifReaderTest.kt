@@ -11,6 +11,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -22,6 +23,10 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -110,6 +115,108 @@ class ExifReaderTest {
     @Test
     fun readLatLong_withoutGps_returnsNull() {
         assertNull(reader.readLatLong(noExif.absolutePath))
+    }
+
+    // --- lote -----------------------------------------------------------
+
+    @Test
+    fun readExifBatch_mixedInputs_keepsOrderAndReportsErrorsPerItem() {
+        val missing = File(tempFolder.root, "missing.jpg").absolutePath
+        val paths = listOf(
+            withGps.absolutePath,
+            missing,
+            FixtureProvider.uriFor("with_gps.jpg"),
+            noExif.absolutePath,
+        )
+
+        val results = awaitBatch<LinkedHashMap<String, String?>> { executor, done ->
+            reader.readExifBatch(paths, executor, done)
+        }
+
+        assertEquals(paths, results.map { it.path })
+
+        assertNull(results[0].error)
+        assertWithGpsValues(results[0].data!!)
+
+        assertNull(results[1].data)
+        assertNotNull(results[1].error)
+
+        assertNull(results[2].error)
+        assertWithGpsValues(results[2].data!!)
+
+        assertNull(results[3].error)
+        assertNull(results[3].data!![ExifInterface.TAG_MAKE])
+    }
+
+    @Test
+    fun readLatLongBatch_returnsCoordinatesOrNullPerItem() {
+        val paths = listOf(withGps.absolutePath, noExif.absolutePath)
+
+        val results = awaitBatch<DoubleArray?> { executor, done ->
+            reader.readLatLongBatch(paths, executor, done)
+        }
+
+        assertArrayEquals(doubleArrayOf(-23.5505, -46.6333), results[0].data, 1e-4)
+        assertNull(results[0].error)
+        assertNull(results[1].data)
+        assertNull(results[1].error)
+    }
+
+    @Test
+    fun readExifBatch_manyConcurrentItems_returnsAllInOrder() {
+        val paths = List(50) { index ->
+            if (index % 2 == 0) withGps.absolutePath else noExif.absolutePath
+        }
+
+        val results = awaitBatch<LinkedHashMap<String, String?>> { executor, done ->
+            reader.readExifBatch(paths, executor, done)
+        }
+
+        assertEquals(50, results.size)
+        results.forEachIndexed { index, result ->
+            assertNull(result.error)
+            val expectedMake = if (index % 2 == 0) "TestMake" else null
+            assertEquals(expectedMake, result.data!![ExifInterface.TAG_MAKE])
+        }
+    }
+
+    @Test
+    fun readExifBatch_emptyList_completesImmediately() {
+        var results: List<BatchResult<LinkedHashMap<String, String?>>>? = null
+
+        reader.readExifBatch(emptyList(), { error("não deve executar tarefas") }) { results = it }
+
+        assertEquals(emptyList<Any>(), results)
+    }
+
+    @Test
+    fun readExifBatch_executorShutDown_reportsErrorInsteadOfHanging() {
+        val executor = Executors.newSingleThreadExecutor().apply { shutdown() }
+        var results: List<BatchResult<LinkedHashMap<String, String?>>>? = null
+
+        reader.readExifBatch(listOf(withGps.absolutePath), executor) { results = it }
+
+        assertEquals(1, results!!.size)
+        assertNull(results!![0].data)
+        assertNotNull(results!![0].error)
+    }
+
+    private fun <T> awaitBatch(
+        start: (Executor, (List<BatchResult<T>>) -> Unit) -> Unit
+    ): List<BatchResult<T>> {
+        val executor = Executors.newFixedThreadPool(4)
+        val latch = CountDownLatch(1)
+        var results: List<BatchResult<T>> = emptyList()
+        try {
+            start(executor) {
+                results = it
+                latch.countDown()
+            }
+            assertTrue("lote não terminou a tempo", latch.await(10, TimeUnit.SECONDS))
+        } finally {
+            executor.shutdownNow()
+        }
+        return results
     }
 
     // --- lista de atributos ----------------------------------------------

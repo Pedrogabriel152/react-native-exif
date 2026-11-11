@@ -140,92 +140,236 @@ static void RNExifFetchAssetFileURL(PHAsset *asset,
                                }];
 }
 
-static void RNExifGetExif(NSString *path,
-                          RCTPromiseResolveBlock resolve,
-                          RCTPromiseRejectBlock reject) {
-    if (RNExifFileExistsAtPath(path) || !RNExifIsPhotoLibraryPath(path)) {
-        NSError *error = nil;
-        NSDictionary *exifData = [RNExifReader exifDataForPath:path error:&error];
+typedef void (^RNExifResultBlock)(NSDictionary *data, NSError *error);
 
+static NSUInteger const RNExifBatchConcurrency = 4;
+
+static BOOL RNExifIsLocalPath(NSString *path) {
+    return RNExifFileExistsAtPath(path) || !RNExifIsPhotoLibraryPath(path);
+}
+
+// --- leitura por asset (compartilhada entre chamada individual e lote) ----
+
+static void RNExifReadExifForAsset(PHAsset *asset, NSString *path, RNExifResultBlock completion) {
+    RNExifFetchAssetFileURL(asset, ^(NSURL *url, NSError *urlError) {
+        if (!url) {
+            completion(nil, urlError);
+            return;
+        }
+
+        NSError *readError = nil;
+        NSMutableDictionary *exifData =
+            [[RNExifReader exifDataForPath:url.absoluteString error:&readError] mutableCopy];
         if (!exifData) {
-            reject(@"EXIF_ERROR", error.localizedDescription ?: @"Erro ao ler EXIF", error);
+            completion(nil, readError);
             return;
         }
-
-        resolve(exifData);
-        return;
-    }
-
-    RNExifFetchAsset(path, ^(PHAsset *asset, NSError *error) {
-        if (!asset) {
-            reject(@"EXIF_ERROR", error.localizedDescription ?: @"Erro ao ler EXIF", error);
-            return;
-        }
-
-        RNExifFetchAssetFileURL(asset, ^(NSURL *url, NSError *urlError) {
-            if (!url) {
-                reject(@"EXIF_ERROR", urlError.localizedDescription ?: @"Erro ao ler EXIF", urlError);
-                return;
-            }
-
-            NSError *readError = nil;
-            NSMutableDictionary *exifData =
-                [[RNExifReader exifDataForPath:url.absoluteString error:&readError] mutableCopy];
-            if (!exifData) {
-                reject(@"EXIF_ERROR", readError.localizedDescription ?: @"Erro ao ler EXIF", readError);
-                return;
-            }
-            exifData[@"originalUri"] = path ?: @"";
-            resolve(exifData);
-        });
+        exifData[@"originalUri"] = path ?: @"";
+        completion(exifData, nil);
     });
 }
 
-static void RNExifGetLatLong(NSString *path,
-                             RCTPromiseResolveBlock resolve,
-                             RCTPromiseRejectBlock reject) {
-    if (RNExifFileExistsAtPath(path) || !RNExifIsPhotoLibraryPath(path)) {
-        NSError *error = nil;
-        NSDictionary *latLong = [RNExifReader latLongForPath:path error:&error];
+static void RNExifReadLatLongForAsset(PHAsset *asset, RNExifResultBlock completion) {
+    // A localizacao ja esta no banco do Photos: nenhum arquivo precisa ser lido.
+    CLLocation *location = asset.location;
+    if (location && CLLocationCoordinate2DIsValid(location.coordinate)) {
+        completion(@{
+            @"latitude" : @(location.coordinate.latitude),
+            @"longitude" : @(location.coordinate.longitude),
+        }, nil);
+        return;
+    }
 
-        if (!latLong) {
-            reject(@"EXIF_ERROR", error.localizedDescription ?: @"Erro ao ler EXIF", error);
+    RNExifFetchAssetFileURL(asset, ^(NSURL *url, NSError *urlError) {
+        if (!url) {
+            completion(nil, urlError);
             return;
         }
 
-        resolve(latLong);
+        NSError *readError = nil;
+        NSDictionary *latLong = [RNExifReader latLongForPath:url.absoluteString error:&readError];
+        completion(latLong, latLong ? nil : readError);
+    });
+}
+
+// --- leitura por caminho -------------------------------------------------
+
+static void RNExifReadExif(NSString *path, RNExifResultBlock completion) {
+    if (RNExifIsLocalPath(path)) {
+        NSError *error = nil;
+        NSDictionary *exifData = [RNExifReader exifDataForPath:path error:&error];
+        completion(exifData, exifData ? nil : error);
         return;
     }
 
     RNExifFetchAsset(path, ^(PHAsset *asset, NSError *error) {
         if (!asset) {
+            completion(nil, error);
+            return;
+        }
+        RNExifReadExifForAsset(asset, path, completion);
+    });
+}
+
+static void RNExifReadLatLong(NSString *path, RNExifResultBlock completion) {
+    if (RNExifIsLocalPath(path)) {
+        NSError *error = nil;
+        NSDictionary *latLong = [RNExifReader latLongForPath:path error:&error];
+        completion(latLong, latLong ? nil : error);
+        return;
+    }
+
+    RNExifFetchAsset(path, ^(PHAsset *asset, NSError *error) {
+        if (!asset) {
+            completion(nil, error);
+            return;
+        }
+        RNExifReadLatLongForAsset(asset, completion);
+    });
+}
+
+static RNExifResultBlock RNExifPromiseBlock(RCTPromiseResolveBlock resolve,
+                                            RCTPromiseRejectBlock reject) {
+    return ^(NSDictionary *data, NSError *error) {
+        if (!data) {
             reject(@"EXIF_ERROR", error.localizedDescription ?: @"Erro ao ler EXIF", error);
             return;
         }
+        resolve(data);
+    };
+}
 
-        // A localizacao ja esta no banco do Photos: nenhum arquivo precisa ser lido.
-        CLLocation *location = asset.location;
-        if (location && CLLocationCoordinate2DIsValid(location.coordinate)) {
-            resolve(@{
-                @"latitude" : @(location.coordinate.latitude),
-                @"longitude" : @(location.coordinate.longitude),
-            });
-            return;
+// --- lote ----------------------------------------------------------------
+
+// Busca todos os assets ph:// numa unica consulta ao Photos. Chaves: o
+// localIdentifier completo e o prefixo antes de "/" (ph://UUID sem /L0/001).
+static NSDictionary<NSString *, PHAsset *> *RNExifFetchAssetsByIdentifier(NSArray<NSString *> *paths) {
+    NSMutableArray<NSString *> *identifiers = [NSMutableArray array];
+    for (NSString *path in paths) {
+        if ([path hasPrefix:@"ph://"]) {
+            [identifiers addObject:RNExifPhotoIdentifierFromPath(path)];
         }
+    }
+    if (identifiers.count == 0) {
+        return @{};
+    }
 
-        RNExifFetchAssetFileURL(asset, ^(NSURL *url, NSError *urlError) {
-            if (!url) {
-                reject(@"EXIF_ERROR", urlError.localizedDescription ?: @"Erro ao ler EXIF", urlError);
-                return;
-            }
+    NSMutableDictionary<NSString *, PHAsset *> *byIdentifier = [NSMutableDictionary dictionary];
+    PHFetchResult<PHAsset *> *assets =
+        [PHAsset fetchAssetsWithLocalIdentifiers:identifiers options:nil];
+    for (PHAsset *asset in assets) {
+        NSString *identifier = asset.localIdentifier;
+        byIdentifier[identifier] = asset;
+        NSString *prefix = [identifier componentsSeparatedByString:@"/"].firstObject;
+        if (prefix.length > 0 && !byIdentifier[prefix]) {
+            byIdentifier[prefix] = asset;
+        }
+    }
+    return byIdentifier;
+}
 
-            NSError *readError = nil;
-            NSDictionary *latLong = [RNExifReader latLongForPath:url.absoluteString error:&readError];
-            if (!latLong) {
-                reject(@"EXIF_ERROR", readError.localizedDescription ?: @"Erro ao ler EXIF", readError);
-                return;
-            }
-            resolve(latLong);
+static void RNExifRunBatch(NSArray<NSString *> *paths,
+                           BOOL readLatLong,
+                           RCTPromiseResolveBlock resolve) {
+    NSUInteger count = paths.count;
+    if (count == 0) {
+        resolve(@[]);
+        return;
+    }
+
+    BOOL needsPhotoLibrary = NO;
+    for (NSString *path in paths) {
+        if (!RNExifIsLocalPath(path)) {
+            needsPhotoLibrary = YES;
+            break;
+        }
+    }
+
+    void (^start)(BOOL, NSDictionary<NSString *, PHAsset *> *) =
+        ^(BOOL photoAccessGranted, NSDictionary<NSString *, PHAsset *> *assets) {
+          NSMutableArray *results = [NSMutableArray arrayWithCapacity:count];
+          for (NSUInteger i = 0; i < count; i++) {
+              [results addObject:[NSNull null]];
+          }
+
+          NSObject *lock = [NSObject new];
+          dispatch_group_t group = dispatch_group_create();
+          dispatch_semaphore_t slots = dispatch_semaphore_create(RNExifBatchConcurrency);
+          // Fila serial que so distribui as tarefas; a espera pelo semaforo
+          // acontece aqui, nunca nas filas que executam os callbacks.
+          dispatch_queue_t dispatcher =
+              dispatch_queue_create("com.pedro.reactnativeexif.batch", DISPATCH_QUEUE_SERIAL);
+
+          dispatch_async(dispatcher, ^{
+            [paths enumerateObjectsUsingBlock:^(NSString *path, NSUInteger index, BOOL *stop) {
+              dispatch_semaphore_wait(slots, DISPATCH_TIME_FOREVER);
+              dispatch_group_enter(group);
+
+              RNExifResultBlock done = ^(NSDictionary *data, NSError *error) {
+                NSDictionary *item = @{
+                    @"path" : path ?: @"",
+                    @"data" : data ?: (id)[NSNull null],
+                    @"error" : data ? (id)[NSNull null]
+                                    : (error.localizedDescription ?: @"Erro ao ler EXIF"),
+                };
+                @synchronized(lock) {
+                    results[index] = item;
+                }
+                dispatch_semaphore_signal(slots);
+                dispatch_group_leave(group);
+              };
+
+              dispatch_async(RNExifWorkQueue(), ^{
+                if (RNExifIsLocalPath(path)) {
+                    if (readLatLong) {
+                        RNExifReadLatLong(path, done);
+                    } else {
+                        RNExifReadExif(path, done);
+                    }
+                    return;
+                }
+
+                if (!photoAccessGranted) {
+                    done(nil, RNExifPhotoError(20, @"Permissao para fotos negada"));
+                    return;
+                }
+
+                PHAsset *asset = [path hasPrefix:@"ph://"]
+                                     ? assets[RNExifPhotoIdentifierFromPath(path)]
+                                     : nil;
+                if (asset) {
+                    if (readLatLong) {
+                        RNExifReadLatLongForAsset(asset, done);
+                    } else {
+                        RNExifReadExifForAsset(asset, path, done);
+                    }
+                    return;
+                }
+
+                // assets-library:// (legado) ou id nao encontrado na consulta em lote.
+                if (readLatLong) {
+                    RNExifReadLatLong(path, done);
+                } else {
+                    RNExifReadExif(path, done);
+                }
+              });
+            }];
+
+            dispatch_group_notify(group, RNExifWorkQueue(), ^{
+              resolve(results);
+            });
+          });
+        };
+
+    if (!needsPhotoLibrary) {
+        start(NO, @{});
+        return;
+    }
+
+    // Permissao pedida uma unica vez para o lote inteiro.
+    RNExifRequestPhotoAuthorization(^(BOOL granted) {
+        dispatch_async(RNExifWorkQueue(), ^{
+          start(granted, granted ? RNExifFetchAssetsByIdentifier(paths) : @{});
         });
     });
 }
@@ -239,13 +383,13 @@ RCT_REMAP_METHOD(getExif,
                  resolve:(RCTPromiseResolveBlock)resolve
                  reject:(RCTPromiseRejectBlock)reject)
 {
-    RNExifGetExif(path, resolve, reject);
+    RNExifReadExif(path, RNExifPromiseBlock(resolve, reject));
 }
 #else
 - (void)getExif:(NSString *)path
         resolve:(RCTPromiseResolveBlock)resolve
          reject:(RCTPromiseRejectBlock)reject {
-    RNExifGetExif(path, resolve, reject);
+    RNExifReadExif(path, RNExifPromiseBlock(resolve, reject));
 }
 #endif
 
@@ -255,13 +399,45 @@ RCT_REMAP_METHOD(getLatLong,
                  resolve:(RCTPromiseResolveBlock)resolve
                  reject:(RCTPromiseRejectBlock)reject)
 {
-    RNExifGetLatLong(path, resolve, reject);
+    RNExifReadLatLong(path, RNExifPromiseBlock(resolve, reject));
 }
 #else
 - (void)getLatLong:(NSString *)path
            resolve:(RCTPromiseResolveBlock)resolve
             reject:(RCTPromiseRejectBlock)reject {
-    RNExifGetLatLong(path, resolve, reject);
+    RNExifReadLatLong(path, RNExifPromiseBlock(resolve, reject));
+}
+#endif
+
+#if !RNEXIF_HAS_CODEGEN
+RCT_REMAP_METHOD(getExifBatch,
+                 getExifBatch:(NSArray *)paths
+                 resolve:(RCTPromiseResolveBlock)resolve
+                 reject:(RCTPromiseRejectBlock)reject)
+{
+    RNExifRunBatch(paths, NO, resolve);
+}
+#else
+- (void)getExifBatch:(NSArray *)paths
+             resolve:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject {
+    RNExifRunBatch(paths, NO, resolve);
+}
+#endif
+
+#if !RNEXIF_HAS_CODEGEN
+RCT_REMAP_METHOD(getLatLongBatch,
+                 getLatLongBatch:(NSArray *)paths
+                 resolve:(RCTPromiseResolveBlock)resolve
+                 reject:(RCTPromiseRejectBlock)reject)
+{
+    RNExifRunBatch(paths, YES, resolve);
+}
+#else
+- (void)getLatLongBatch:(NSArray *)paths
+                resolve:(RCTPromiseResolveBlock)resolve
+                 reject:(RCTPromiseRejectBlock)reject {
+    RNExifRunBatch(paths, YES, resolve);
 }
 #endif
 

@@ -1,10 +1,12 @@
 import { TurboModuleRegistry } from 'react-native';
-import { getExif, getLatLong } from '../index';
+import { getExif, getExifBatch, getLatLong, getLatLongBatch } from '../index';
 
 jest.mock('react-native', () => {
   const nativeModule = {
     getExif: jest.fn(),
     getLatLong: jest.fn(),
+    getExifBatch: jest.fn(),
+    getLatLongBatch: jest.fn(),
   };
   return {
     TurboModuleRegistry: {
@@ -17,11 +19,12 @@ const mockNativeModule = (TurboModuleRegistry.getEnforcing as jest.Mock).mock
   .results[0]!.value as {
   getExif: jest.Mock;
   getLatLong: jest.Mock;
+  getExifBatch: jest.Mock;
+  getLatLongBatch: jest.Mock;
 };
 
 beforeEach(() => {
-  mockNativeModule.getExif.mockReset();
-  mockNativeModule.getLatLong.mockReset();
+  Object.values(mockNativeModule).forEach((fn) => fn.mockReset());
 });
 
 describe('módulo nativo', () => {
@@ -139,5 +142,82 @@ describe('getLatLong', () => {
       { latitude: 7, longitude: -7 },
       { latitude: 8, longitude: -8 },
     ]);
+  });
+});
+
+describe('getExifBatch', () => {
+  it('envia todos os caminhos numa única chamada nativa', async () => {
+    const paths = ['/a.jpg', 'content://media/external/images/media/1'];
+    mockNativeModule.getExifBatch.mockResolvedValue([
+      { path: paths[0], data: { Make: 'A' }, error: null },
+      { path: paths[1], data: { Make: 'B' }, error: null },
+    ]);
+
+    const results = await getExifBatch(paths);
+
+    expect(mockNativeModule.getExifBatch).toHaveBeenCalledTimes(1);
+    expect(mockNativeModule.getExifBatch).toHaveBeenCalledWith(paths);
+    expect(mockNativeModule.getExif).not.toHaveBeenCalled();
+    expect(results.map((item) => item.data?.Make)).toEqual(['A', 'B']);
+  });
+
+  it('resolve mesmo quando um item falha, com o erro no próprio item', async () => {
+    mockNativeModule.getExifBatch.mockResolvedValue([
+      { path: '/ok.jpg', data: { Make: 'A' }, error: null },
+      {
+        path: '/missing.jpg',
+        data: null,
+        error: 'Nao foi possivel abrir a imagem',
+      },
+    ]);
+
+    const results = await getExifBatch(['/ok.jpg', '/missing.jpg']);
+
+    expect(results[0]).toEqual({
+      path: '/ok.jpg',
+      data: { Make: 'A' },
+      error: null,
+    });
+    expect(results[1]).toEqual({
+      path: '/missing.jpg',
+      data: null,
+      error: 'Nao foi possivel abrir a imagem',
+    });
+  });
+
+  it('lista vazia devolve [] sem chamar o nativo', async () => {
+    await expect(getExifBatch([])).resolves.toEqual([]);
+    expect(mockNativeModule.getExifBatch).not.toHaveBeenCalled();
+  });
+});
+
+describe('getLatLongBatch', () => {
+  it('devolve as coordenadas na mesma ordem dos caminhos', async () => {
+    const paths = ['ph://B', 'ph://A'];
+    mockNativeModule.getLatLongBatch.mockResolvedValue([
+      { path: 'ph://B', data: { latitude: 2, longitude: -2 }, error: null },
+      { path: 'ph://A', data: { latitude: 1, longitude: -1 }, error: null },
+    ]);
+
+    const results = await getLatLongBatch(paths);
+
+    expect(mockNativeModule.getLatLongBatch).toHaveBeenCalledWith(paths);
+    expect(results.map((item) => item.path)).toEqual(paths);
+    expect(results[0]!.data).toEqual({ latitude: 2, longitude: -2 });
+  });
+
+  it('item sem permissão traz o erro e não rejeita o lote', async () => {
+    mockNativeModule.getLatLongBatch.mockResolvedValue([
+      { path: 'ph://A', data: null, error: 'Permissao para fotos negada' },
+    ]);
+
+    await expect(getLatLongBatch(['ph://A'])).resolves.toEqual([
+      { path: 'ph://A', data: null, error: 'Permissao para fotos negada' },
+    ]);
+  });
+
+  it('lista vazia devolve [] sem chamar o nativo', async () => {
+    await expect(getLatLongBatch([])).resolves.toEqual([]);
+    expect(mockNativeModule.getLatLongBatch).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,11 @@ import android.content.ContentResolver
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import java.io.IOException
+import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicInteger
+
+/** Resultado de um item de lote: `data` em caso de sucesso, `error` caso contrário. */
+data class BatchResult<T>(val path: String, val data: T?, val error: String?)
 
 /**
  * Leitura de EXIF sem dependência do React Native, para poder ser testada na JVM.
@@ -83,6 +88,64 @@ class ExifReader(private val contentResolver: ContentResolver) {
     /** `[latitude, longitude]` com sinal (S/W negativos), ou null sem GPS. */
     @Throws(IOException::class)
     fun readLatLong(uri: String): DoubleArray? = withExif(uri) { it.latLong }
+
+    /** Lê várias imagens em paralelo no [executor]; [onComplete] recebe os itens na ordem de [paths]. */
+    fun readExifBatch(
+        paths: List<String>,
+        executor: Executor,
+        onComplete: (List<BatchResult<LinkedHashMap<String, String?>>>) -> Unit
+    ) = runBatch(paths, executor, ::readExif, onComplete)
+
+    /** Igual a [readExifBatch], para coordenadas (`data` null quando a imagem não tem GPS). */
+    fun readLatLongBatch(
+        paths: List<String>,
+        executor: Executor,
+        onComplete: (List<BatchResult<DoubleArray?>>) -> Unit
+    ) = runBatch(paths, executor, ::readLatLong, onComplete)
+
+    /**
+     * Cada path vira uma tarefa independente; o último a terminar entrega o
+     * resultado. Não bloqueia nenhuma thread do pool esperando as outras.
+     */
+    private fun <T> runBatch(
+        paths: List<String>,
+        executor: Executor,
+        read: (String) -> T,
+        onComplete: (List<BatchResult<T>>) -> Unit
+    ) {
+        if (paths.isEmpty()) {
+            onComplete(emptyList())
+            return
+        }
+
+        val results = arrayOfNulls<BatchResult<T>>(paths.size)
+        val remaining = AtomicInteger(paths.size)
+
+        fun finish(index: Int, result: BatchResult<T>) {
+            results[index] = result
+            if (remaining.decrementAndGet() == 0) {
+                @Suppress("UNCHECKED_CAST")
+                onComplete((results as Array<BatchResult<T>>).asList())
+            }
+        }
+
+        paths.forEachIndexed { index, path ->
+            val task = Runnable {
+                val result = try {
+                    BatchResult(path, read(path), null)
+                } catch (e: Exception) {
+                    BatchResult<T>(path, null, e.message ?: e.javaClass.simpleName)
+                }
+                finish(index, result)
+            }
+            try {
+                executor.execute(task)
+            } catch (e: Exception) {
+                // Executor encerrado (módulo invalidado): registra o erro no item.
+                finish(index, BatchResult(path, null, e.message ?: "Leitura cancelada"))
+            }
+        }
+    }
 
     /**
      * Abre o arquivo e garante o fechamento do recurso ao final.
