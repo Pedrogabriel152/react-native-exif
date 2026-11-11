@@ -46,19 +46,33 @@ decided yet.
 <string>Used to read the location and metadata of your photos.</string>
 ```
 
-**Android:** to read images from the media store (`content://`):
+**Android:** the library **does not declare or require any permission**. Whether
+an image can be read depends only on where it comes from:
+
+| Image source | Permission needed | GPS available? |
+| --- | --- | --- |
+| Photo taken by your app (`CAMERA`), saved in your app's cache/files | none | yes, if the location was written when the photo was taken |
+| Picked by the user with the system file picker (`ACTION_OPEN_DOCUMENT`) | none to read | yes, if your app has `ACCESS_MEDIA_LOCATION` |
+| Picked with the Android Photo Picker (`PickVisualMedia`, most image picker libraries) | none | no, Android strips the location |
+
+On Android 10+, the media store hides GPS tags unless the image is opened with
+its original data. When your app **already has** `ACCESS_MEDIA_LOCATION`
+granted, the library does this automatically for `content://media/...` URIs.
+Without the permission, every other tag is still read and `getLatLong`
+returns `0, 0`.
 
 ```xml
-<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-<!-- Android 12 and below -->
-<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+<!-- Optional: only if you need GPS from photos the user picks -->
 <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
 ```
 
-> **Known limitation (Android 10+):** for `content://` URIs from the media
-> store, Android hides GPS tags unless the URI was opened with
-> `MediaStore.setRequireOriginal`. The library does not do this yet, so
-> `getLatLong` may return `0, 0` for those URIs. File paths are not affected.
+`ACCESS_MEDIA_LOCATION` is a runtime permission, but it does not require a
+Google Play declaration form.
+
+> Reading the whole gallery without user selection requires
+> `READ_MEDIA_IMAGES`, which Google Play only allows for apps whose core
+> feature is broad gallery access (declaration form required). This library
+> does not need it: prefer letting the user pick the images.
 
 ## Supported paths
 
@@ -201,6 +215,8 @@ same message in the item's `error`.
   native-modules thread on Android; fixed a file descriptor leak on Android.
 - **iOS:** `getLatLong` for `ph://` uses the Photos location directly; the
   permission prompt is shown only when the user has not decided yet.
+- **Android:** reads the original GPS of media store photos when the app
+  already has `ACCESS_MEDIA_LOCATION`; no permission is required otherwise.
 - **Breaking:** removed the `multiply` export, which was left over from the template.
 - **Breaking:** `getExif` no longer returns `MakerNote`, `ORFThumbnailImage`
   or `RW2JpgFromRaw`.
