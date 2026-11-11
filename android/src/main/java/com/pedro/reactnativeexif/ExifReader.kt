@@ -1,7 +1,12 @@
 package com.pedro.reactnativeexif
 
-import android.content.ContentResolver
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import java.io.InputStream
 import androidx.exifinterface.media.ExifInterface
 import java.io.IOException
 import java.util.concurrent.Executor
@@ -13,7 +18,7 @@ data class BatchResult<T>(val path: String, val data: T?, val error: String?)
 /**
  * Leitura de EXIF sem dependência do React Native, para poder ser testada na JVM.
  */
-class ExifReader(private val contentResolver: ContentResolver) {
+class ExifReader(private val context: Context) {
 
     companion object {
         // Sem duplicatas e sem tags binárias grandes (MakerNote, thumbnails/JPEG
@@ -160,7 +165,7 @@ class ExifReader(private val contentResolver: ContentResolver) {
         val uri = Uri.parse(uriString)
         return when (uri.scheme) {
             "content" -> {
-                val stream = contentResolver.openInputStream(uri)
+                val stream = openContentStream(uri)
                     ?: throw IOException("Não foi possível abrir o arquivo: $uriString")
                 stream.use { block(ExifInterface(it)) }
             }
@@ -170,4 +175,33 @@ class ExifReader(private val contentResolver: ContentResolver) {
             else -> block(ExifInterface(uriString))
         }
     }
+
+    /**
+     * No Android 10+, a MediaStore remove o GPS do EXIF a menos que a URI seja
+     * aberta com [MediaStore.setRequireOriginal], o que exige
+     * ACCESS_MEDIA_LOCATION. A lib não exige essa permissão: só usa a URI
+     * original quando o app já a concedeu, e cai para a URI normal se o
+     * provider recusar (ex.: Photo Picker).
+     */
+    private fun openContentStream(uri: Uri): InputStream? {
+        val resolver = context.contentResolver
+        if (canRequestOriginal(uri)) {
+            try {
+                return resolver.openInputStream(MediaStore.setRequireOriginal(uri))
+            } catch (e: SecurityException) {
+                // segue para a URI normal
+            } catch (e: UnsupportedOperationException) {
+                // segue para a URI normal
+            } catch (e: IllegalArgumentException) {
+                // segue para a URI normal
+            }
+        }
+        return resolver.openInputStream(uri)
+    }
+
+    private fun canRequestOriginal(uri: Uri): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            uri.authority == MediaStore.AUTHORITY &&
+            context.checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
 }

@@ -1,10 +1,12 @@
 package com.pedro.reactnativeexif
 
+import android.Manifest
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.provider.MediaStore
 import androidx.exifinterface.media.ExifInterface
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -20,6 +22,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.io.File
 import java.io.IOException
@@ -45,9 +48,12 @@ class ExifReaderTest {
         noExif = copyFixture("no_exif.jpg")
 
         FixtureProvider.files = mapOf("with_gps.jpg" to withGps)
+        FixtureProvider.openedUris.clear()
+        FixtureProvider.rejectRequireOriginal = false
         Robolectric.setupContentProvider(FixtureProvider::class.java, FixtureProvider.AUTHORITY)
+        Robolectric.setupContentProvider(FixtureProvider::class.java, MediaStore.AUTHORITY)
 
-        reader = ExifReader(RuntimeEnvironment.getApplication().contentResolver)
+        reader = ExifReader(RuntimeEnvironment.getApplication())
     }
 
     // --- getExif ---------------------------------------------------------
@@ -116,6 +122,55 @@ class ExifReaderTest {
     fun readLatLong_withoutGps_returnsNull() {
         assertNull(reader.readLatLong(noExif.absolutePath))
     }
+
+    // --- ACCESS_MEDIA_LOCATION / setRequireOriginal -----------------------
+
+    @Test
+    fun mediaStoreUri_withoutPermission_opensPlainUri() {
+        val result = reader.readExif(mediaUri("with_gps.jpg"))
+
+        assertWithGpsValues(result)
+        assertEquals(listOf(null), FixtureProvider.openedUris.map(::requireOriginalParam))
+    }
+
+    @Test
+    fun mediaStoreUri_withPermission_requestsOriginal() {
+        grantMediaLocation()
+
+        val result = reader.readExif(mediaUri("with_gps.jpg"))
+
+        assertWithGpsValues(result)
+        assertEquals(listOf("1"), FixtureProvider.openedUris.map(::requireOriginalParam))
+    }
+
+    @Test
+    fun mediaStoreUri_providerRejectsOriginal_fallsBackToPlainUri() {
+        grantMediaLocation()
+        FixtureProvider.rejectRequireOriginal = true
+
+        val latLong = reader.readLatLong(mediaUri("with_gps.jpg"))
+
+        assertArrayEquals(doubleArrayOf(-23.5505, -46.6333), latLong, 1e-4)
+        assertEquals(listOf("1", null), FixtureProvider.openedUris.map(::requireOriginalParam))
+    }
+
+    @Test
+    fun nonMediaStoreUri_withPermission_isNotModified() {
+        grantMediaLocation()
+
+        reader.readExif(FixtureProvider.uriFor("with_gps.jpg"))
+
+        assertEquals(listOf(null), FixtureProvider.openedUris.map(::requireOriginalParam))
+    }
+
+    private fun mediaUri(name: String) = "content://${MediaStore.AUTHORITY}/$name"
+
+    private fun grantMediaLocation() {
+        shadowOf(RuntimeEnvironment.getApplication())
+            .grantPermissions(Manifest.permission.ACCESS_MEDIA_LOCATION)
+    }
+
+    private fun requireOriginalParam(uri: Uri): String? = uri.getQueryParameter("requireOriginal")
 
     // --- lote -----------------------------------------------------------
 
@@ -263,11 +318,17 @@ class ExifReaderTest {
         companion object {
             const val AUTHORITY = "com.pedro.reactnativeexif.fixtures"
             var files: Map<String, File> = emptyMap()
+            val openedUris: MutableList<Uri> = java.util.Collections.synchronizedList(mutableListOf())
+            var rejectRequireOriginal = false
 
             fun uriFor(name: String) = "content://$AUTHORITY/$name"
         }
 
         override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
+            openedUris.add(uri)
+            if (rejectRequireOriginal && uri.getQueryParameter("requireOriginal") != null) {
+                throw UnsupportedOperationException("requireOriginal não suportado")
+            }
             val file = files[uri.lastPathSegment]
                 ?: throw java.io.FileNotFoundException("Sem fixture para $uri")
             return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)

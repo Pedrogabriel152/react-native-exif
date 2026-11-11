@@ -21,7 +21,7 @@ class ReactNativeExifModule(reactContext: ReactApplicationContext) :
         Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
     )
 
-    private val reader = ExifReader(reactContext.contentResolver)
+    private val reader = ExifReader(reactContext.applicationContext)
 
     override fun getName(): String = NAME
 
