@@ -2,7 +2,7 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
-      "@pedro/react-native-exif": ["./src/index"]
+      "@pedro.gabriel/react-native-exif": ["./src/index"]
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
